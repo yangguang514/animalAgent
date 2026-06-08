@@ -10,6 +10,7 @@
     "start": "node server/index.js",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "node backend/agents/animalAgentOrchestrator.test.js",
     "check": "node --check api/index.js && node --check server/index.js && node --check backend/routes/apiRoutes.js && node --check backend/services/chatService.js && node --check backend/agents/animalAgentOrchestrator.js && node --check backend/context/layeredContext.js"
   },
   "dependencies": {

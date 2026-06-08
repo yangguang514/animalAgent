@@ -1,4 +1,5 @@
 import { animalSystemPrompt } from "../prompts/animalSystemPrompt.js";
+import { buildDirectorSystemPrompt } from "../prompts/directorSystemPrompt.js";
 
 const DEFAULT_RECENT_MESSAGE_LIMIT = 8;
 const DEFAULT_SUMMARY_MESSAGE_LIMIT = 12;
@@ -29,6 +30,24 @@ function cleanConversationMessages(messages = []) {
 
 function latestUserQuestion(messages = []) {
   return [...messages].reverse().find((message) => message.role === "user")?.content || "";
+}
+
+// 用分镜表格的典型列名识别历史脚本，避免把普通科普回答误当成风格参考。
+function looksLikeReferenceScript(message) {
+  if (message?.role !== "assistant") return false;
+  const content = String(message.content || "");
+  const tableSignals = /画面提示|Visual/i.test(content) && /解说词|Audio/i.test(content) && /音效|BGM|SFX/i.test(content);
+  return tableSignals || (/分镜|脚本/.test(content) && /\|\s*时间/.test(content));
+}
+
+// 默认取最近两篇历史脚本供 DirectorAgent 模仿。
+// 单篇限制 6000 字符，防止参考稿挤占当前任务和检索证据的上下文空间。
+export function extractReferenceScripts(messages = [], limit = 2) {
+  return messages
+    .filter(looksLikeReferenceScript)
+    .slice(-limit)
+    .map((message) => String(message.content || "").trim().slice(0, 6000))
+    .filter(Boolean);
 }
 
 // long_term_summary 层：把较早的对话压缩成要点。
@@ -94,13 +113,15 @@ If the answer needs verified facts, explicitly say that no citable web source is
 
 // runtime 层：把本次请求的执行计划、搜索意图、agent trace 放进上下文。
 // 它让 Writer 知道前面 agent 做过什么，而不是只看到一堆历史消息。
-function buildRuntimeLayer(search = {}, agentTrace = []) {
+function buildRuntimeLayer(search = {}, agentTrace = [], selectedAgent = {}) {
   const trace = agentTrace.length
     ? agentTrace.map((step) => `- ${step.agent}: ${step.status}${step.note ? ` (${step.note})` : ""}`).join("\n")
     : "- single-pass runtime";
 
   return `Runtime plan:
 Latest user request: ${normalizeText(search.latestQuestion || "", 260)}
+Selected response role: ${selectedAgent.name || "Animal Educator"}
+Role selection reason: ${selectedAgent.reason || "Default animal knowledge role."}
 Search intent: ${search.plan?.intent || "unknown"}
 Search confidence: ${search.plan?.confidence ?? "unknown"}
 Agent trace:
@@ -132,11 +153,26 @@ export function buildLayeredContext(messages = [], sources = [], search = {}, op
   const latestQuestion = latestUserQuestion(cleanMessages);
   const enrichedSearch = { ...search, latestQuestion };
 
+  // selectedAgent 由编排层产生；直接调用本函数时则安全回退到动物科普角色。
+  const selectedAgent = options.selectedAgent || { id: "animal_educator", name: "Animal Educator" };
+
+  // options.referenceScripts 是为 Pinecone/RAG 等外部脚本检索预留的注入口；
+  // 未显式传入时，使用当前会话内最近生成过的分镜脚本。
+  const referenceScripts = options.referenceScripts || extractReferenceScripts(cleanMessages);
+
+  // 只有 DirectorAgent 使用视频编导提示词，普通动物问答继续沿用原有 persona。
+  const personaPrompt =
+    selectedAgent.id === "director" ? buildDirectorSystemPrompt(referenceScripts) : animalSystemPrompt;
+
   const layers = [
-    { name: "persona", role: "system", content: animalSystemPrompt },
+    { name: "persona", role: "system", content: personaPrompt },
     { name: "long_term_summary", role: "system", content: buildConversationSummary(cleanMessages) },
     { name: "evidence", role: "system", content: formatEvidenceLayer(sources, enrichedSearch) },
-    { name: "runtime", role: "system", content: buildRuntimeLayer(enrichedSearch, options.agentTrace || []) },
+    {
+      name: "runtime",
+      role: "system",
+      content: buildRuntimeLayer(enrichedSearch, options.agentTrace || [], selectedAgent)
+    },
     { name: "short_term_history", role: "conversation", content: recentMessages }
   ];
 
@@ -151,6 +187,8 @@ export function buildLayeredContext(messages = [], sources = [], search = {}, op
       totalConversationMessages: cleanMessages.length,
       recentMessages: recentMessages.length,
       sources: sources.length,
+      selectedAgent: selectedAgent.id,
+      referenceScripts: referenceScripts.length,
       layers: layers.map((layer) => layer.name)
     }
   };

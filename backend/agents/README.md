@@ -4,10 +4,12 @@ This project now exposes the agent workflow as explicit backend code instead of 
 
 ## Multi-agent collaboration
 
+- Context Role Selector: routes each turn to the animal educator or `DirectorAgent`.
 - Router/Planner: decides whether the latest request needs retrieval.
 - Tool-Using Researcher: calls the registered web search tool and normalizes citable sources.
 - Layered Memory Manager: builds separated context layers before the writer model runs.
-- Writer: generates the final answer from managed context.
+- Animal Educator: answers animal-science questions.
+- DirectorAgent: creates duration-aware video plans and storyboard scripts.
 - Critic: checks citation/source consistency after generation.
 
 The runtime entry points are `planAndResearch` and `finalizeAgentRun` in `animalAgentOrchestrator.js`.
@@ -16,7 +18,7 @@ The runtime entry points are `planAndResearch` and `finalizeAgentRun` in `animal
 
 `backend/context/layeredContext.js` builds five layers:
 
-- `persona`: stable animal-science system prompt.
+- `persona`: selected animal-science or video-director system prompt.
 - `long_term_summary`: compact summary of older turns.
 - `evidence`: search result or search-skip/failure state.
 - `runtime`: planner intent, confidence, and agent trace.
@@ -27,6 +29,7 @@ This keeps token growth predictable and makes each context source auditable.
 ## Agent patterns represented
 
 - Router pattern: request intent routes the flow to search or direct answer.
+- Context-routing pattern: video creation requests switch to `DirectorAgent`; knowledge questions stay with the animal educator.
 - Tool-use pattern: researcher agent uses `toolRegistry` instead of hard-coded search logic.
 - Memory pattern: context is separated into long-term, short-term, evidence, and runtime layers.
 - Reflection/Critic pattern: generated answers are reviewed for citation consistency.

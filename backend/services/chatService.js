@@ -37,7 +37,12 @@ export async function clearConversation(id) {
 // 流程和流式接口保持一致：先 planner/researcher，再 writer，最后 critic。
 export async function askOnce(messages) {
   const agentRun = await planAndResearch(messages);
-  const answer = await completeChat(messages, agentRun.search.sources, agentRun.search, { agentTrace: agentRun.trace });
+
+  // 把角色选择结果透传到上下文层，由它切换动物科普或视频编导 system prompt。
+  const answer = await completeChat(messages, agentRun.search.sources, agentRun.search, {
+    agentTrace: agentRun.trace,
+    selectedAgent: agentRun.selectedAgent
+  });
   const finalRun = finalizeAgentRun(answer, agentRun.search.sources, agentRun.search, agentRun.trace);
 
   return {
@@ -69,7 +74,7 @@ export async function appendUserMessageAndStream(conversationId, content, events
   conversation.title = generateLocalTitle(conversation.messages);
   conversation = await conversationRepository.save(conversation);
 
-  // agentRun.search 是搜索结果；agentRun.trace 是多智能体协作轨迹。
+  // agentRun 同时包含角色选择、搜索结果和多智能体协作轨迹。
   const agentRun = await planAndResearch(conversation.messages, events);
   const search = agentRun.search;
   events.sources({
@@ -85,7 +90,8 @@ export async function appendUserMessageAndStream(conversationId, content, events
   events.status("Writer agent 正在生成回答...");
   let answer = "";
 
-  // streamChat 内部会先调用 layeredContext，把历史、证据、运行状态组装成 LLM messages。
+  // streamChat 内部会调用 layeredContext，按 selectedAgent 选择 persona，
+  // 再把历史、参考脚本、证据和运行状态组装成 LLM messages。
   answer = await streamChat(
     conversation.messages,
     search.sources,
@@ -94,7 +100,7 @@ export async function appendUserMessageAndStream(conversationId, content, events
       answer += delta;
       events.delta(delta);
     },
-    { agentTrace: agentRun.trace }
+    { agentTrace: agentRun.trace, selectedAgent: agentRun.selectedAgent }
   );
 
   if (!answer.trim()) {

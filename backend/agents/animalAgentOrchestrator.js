@@ -1,29 +1,79 @@
 import { searchWeb } from "../services/searchService.js";
 
-// 面试里说的“agent 设计模式”在这里集中登记。
-// 它不是运行必须的数据，而是给 /api/agents 和 README 做架构展示用。
+// “agent 设计模式”在这里集中登记。
+// 它既用于运行时角色路由，也用于 /api/agents 和 README 的架构展示。
 export const AGENT_PATTERNS = [
+  { name: "Context Role Selector", pattern: "router", purpose: "Route each turn to the animal educator or video director persona." },
   { name: "Router/Planner", pattern: "router", purpose: "Classify the latest request and decide whether retrieval is needed." },
   { name: "Tool-Using Researcher", pattern: "tool-use", purpose: "Call registered tools, normalize evidence, and expose citable sources." },
   { name: "Layered Memory Manager", pattern: "memory", purpose: "Separate persona, summary, recent turns, evidence, and runtime metadata." },
-  { name: "Writer", pattern: "reactive", purpose: "Generate the final user-facing answer from the managed context." },
+  { name: "Animal Educator", pattern: "reactive", purpose: "Answer animal science and zoology questions accurately and accessibly." },
+  { name: "DirectorAgent", pattern: "reactive", purpose: "Create duration-aware animal video plans, narration, and storyboard scripts." },
   { name: "Critic", pattern: "reflection", purpose: "Run deterministic post-checks for citation and evidence consistency." }
 ];
 
-// 每个 agent 执行完一步，都往 trace 里写一条轨迹。
-// 这可以理解为“多智能体协作日志”，方便调试和讲解链路。
+// 视频角色路由拆成三类信号：
+// 1. 用户提到了视频产物；2. 用户明确要求创作；3. 用户正在修改上一轮视频方案。
+// 分开判断可以避免“这个动物出现在什么视频里”之类的知识问题被误判为脚本创作。
+const VIDEO_ARTIFACT_PATTERN =
+  /视频|短视频|长视频|探园|探馆|vlog|脚本|分镜|口播稿|解说词|拍摄方案|镜头表|storyboard|shooting script|video script|reels?|shorts?/i;
+const VIDEO_CREATION_PATTERN =
+  /制作|创作|生成|写(?:一个|一份|个|份)?|策划|设计|规划|改写|改成|扩写|润色|剪辑|拍摄|做(?:一个|一期|个|期)?|produce|create|write|plan|direct|rewrite|storyboard/i;
+const VIDEO_FOLLOW_UP_PATTERN =
+  /改成|调整|扩写|缩短|延长|增加|删掉|换成|时长|分钟|秒|节奏|镜头|开场|结尾|旁白|解说|版本|风格|受众|平台/i;
+
+// 角色判断只读取最近几条用户消息，既能识别追问，又不会被很早以前的话题持续干扰。
+function recentUserMessages(messages = [], limit = 4) {
+  return messages
+    .filter((message) => message?.role === "user")
+    .slice(-limit)
+    .map((message) => String(message.content || "").trim())
+    .filter(Boolean);
+}
+
+// Context Role Selector：
+// 明确的视频创作请求和视频方案追问交给 DirectorAgent，其余请求保留动物科普角色。
+// 当前使用本地确定性规则，响应快且容易测试；后续也可以替换为 LLM 分类器。
+export function selectAgentPattern(messages = []) {
+  const userMessages = recentUserMessages(messages);
+  const latest = userMessages.at(-1) || "";
+  const priorContext = userMessages.slice(0, -1).join("\n");
+  const explicitVideoRequest = VIDEO_ARTIFACT_PATTERN.test(latest) && VIDEO_CREATION_PATTERN.test(latest);
+  const scriptArtifactRequest = /脚本|分镜|口播稿|解说词|镜头表|storyboard|video script/i.test(latest);
+
+  // 用户在上一轮已提出视频创作，本轮只说“延长到 30 分钟”时，仍应延续导演角色。
+  const videoFollowUp =
+    VIDEO_FOLLOW_UP_PATTERN.test(latest) &&
+    VIDEO_ARTIFACT_PATTERN.test(priorContext) &&
+    VIDEO_CREATION_PATTERN.test(priorContext);
+
+  if (explicitVideoRequest || scriptArtifactRequest || videoFollowUp) {
+    return {
+      id: "director",
+      name: "DirectorAgent",
+      reason: explicitVideoRequest || scriptArtifactRequest
+        ? "The latest request asks for a video artifact or production plan."
+        : "The latest request continues the recent video creation task."
+    };
+  }
+
+  return {
+    id: "animal_educator",
+    name: "Animal Educator",
+    reason: "The request is primarily an animal knowledge or general conversation task."
+  };
+}
+
+// 每个 agent 执行完一步，都会往 trace 里写一条轨迹。
 function trace(agent, status, note = "") {
   return { agent, status, note, at: new Date().toISOString() };
 }
 
-// 从模型回答里找 [1]、[2] 这样的引用编号。
-// Critic 会用它判断模型有没有引用不存在的来源。
 function extractCitationIds(answer = "") {
   return [...String(answer).matchAll(/\[(\d+)\]/g)].map((match) => Number(match[1]));
 }
 
-// Critic agent：不再调用一次大模型，而是做确定性的规则检查。
-// 好处是稳定、便宜、可解释，主要检查来源引用是否一致。
+// Critic 使用确定性规则检查引用编号和来源列表，不额外调用模型。
 export function reviewAnswer(answer, sources = [], search = {}) {
   const availableIds = new Set(sources.map((source) => Number(source.id)));
   const citationIds = extractCitationIds(answer);
@@ -45,11 +95,15 @@ export function reviewAnswer(answer, sources = [], search = {}) {
   };
 }
 
-// Router/Planner + Researcher 的协作入口。
-// searchWeb 内部已经包含“是否需要搜索”的 planner 逻辑；
-// 这里把它包装成 agent 流程，并记录 planner/researcher 的执行轨迹。
+// 编排入口先选择回答角色，再执行原有的搜索规划。
+// selectedAgent 会继续传到 layeredContext，最终决定真正注入模型的 system prompt。
 export async function planAndResearch(messages, events = {}) {
-  const traceLog = [trace("router", "started", "Inspecting intent and retrieval need.")];
+  const selectedAgent = selectAgentPattern(messages);
+  const traceLog = [
+    trace("role_selector", "selected", `${selectedAgent.name}: ${selectedAgent.reason}`),
+    trace("router", "started", "Inspecting intent and retrieval need.")
+  ];
+  events.status?.(`Role selector chose ${selectedAgent.name}.`);
   events.status?.("Planner agent is checking whether retrieval is needed...");
 
   const search = await searchWeb(messages);
@@ -71,11 +125,10 @@ export async function planAndResearch(messages, events = {}) {
     );
   }
 
-  return { search, trace: traceLog };
+  return { selectedAgent, search, trace: traceLog };
 }
 
-// Writer 生成答案之后调用这里，追加 Critic 检查结果。
-// 返回值会存到 assistant message 的 agents 字段里。
+// Writer 完成后追加 Critic 结果，供消息持久化、前端展示和问题排查使用。
 export function finalizeAgentRun(answer, sources = [], search = {}, traceLog = []) {
   const review = reviewAnswer(answer, sources, search);
   return {
