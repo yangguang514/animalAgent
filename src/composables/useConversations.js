@@ -68,6 +68,8 @@ export function useConversations() {
         if (!assistant) return;
         if (event === "sources") assistant.sources = data.sources || [];
         if (event === "delta") assistant.content += data.content || "";
+        // Revision Agent 返回完整修订稿，不能像 Writer token 一样追加。
+        if (event === "replace") assistant.content = data.content || assistant.content;
         if (event === "error") throw new Error(data.message || "流式响应失败");
         if (event === "done") state.activeConversation = data.conversation;
       });

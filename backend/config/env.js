@@ -45,7 +45,12 @@ export function getLlmConfig() {
     key,
     baseURL: baseURL.replace(/\/$/, ""),
     model,
-    temperature: Number(process.env.ANIMAL_AGENT_TEMPERATURE || 0.4)
+    temperature: Number(process.env.ANIMAL_AGENT_TEMPERATURE || 0.4),
+    // 限制配置范围，避免错误环境变量造成零超时、无限重试或无上限 Agent 循环。
+    timeoutMs: Math.max(3000, Number(process.env.LLM_TIMEOUT_MS || 45000)),
+    maxAttempts: Math.max(1, Math.min(Number(process.env.LLM_MAX_ATTEMPTS || 2), 3)),
+    maxOutputTokens: Math.max(256, Number(process.env.LLM_MAX_OUTPUT_TOKENS || 4096)),
+    maxAgentCallsPerTurn: Math.max(1, Math.min(Number(process.env.LLM_MAX_AGENT_CALLS_PER_TURN || 3), 5))
   };
 }
 

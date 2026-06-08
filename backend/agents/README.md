@@ -12,6 +12,7 @@ This project now exposes the agent workflow as explicit backend code instead of 
 - DirectorAgent: creates duration-aware video plans and storyboard scripts.
 - TitleAgent: summarizes the first completed exchange into a stable sidebar title.
 - Critic: checks citation/source consistency after generation.
+- Revision Agent: performs at most one bounded rewrite when the Critic reports actionable warnings.
 
 The runtime entry points are `planAndResearch` and `finalizeAgentRun` in `animalAgentOrchestrator.js`.
 
@@ -34,7 +35,14 @@ This keeps token growth predictable and makes each context source auditable.
 - Tool-use pattern: researcher agent uses `toolRegistry` instead of hard-coded search logic.
 - Memory pattern: context is separated into long-term, short-term, evidence, and runtime layers.
 - Summarizer pattern: `TitleAgent` creates concise conversation metadata without changing the main answer.
-- Reflection/Critic pattern: generated answers are reviewed for citation consistency.
+- Reflection/Critic pattern: generated answers are reviewed for citation consistency and may enter one bounded revision pass.
 - Orchestrator pattern: `chatService` coordinates agents while preserving existing API behavior.
+
+## Runtime reliability
+
+- User and assistant draft messages are appended before generation starts.
+- Streaming drafts are persisted incrementally, so disconnects retain partial output.
+- One conversation can have only one active PostgreSQL `streaming` message; stale runs become `interrupted`.
+- LLM calls support timeout, limited retries, request cancellation, output-token limits, and a per-turn agent-call budget.
 
 `GET /api/agents` returns the current pattern catalog for demos or interview walkthroughs.

@@ -62,6 +62,12 @@ STORAGE_PROVIDER=postgres
 - `/api/*` 转发到 `api/index.js`
 - 其他路径交给 Vite 的 `dist/index.html`
 
+流式回答会先创建数据库草稿并在生成过程中增量更新。浏览器刷新会取消上游请求，
+但已经生成的内容会保留，消息状态会标记为 `interrupted`。同一会话只允许一个回答同时生成。
+
+模型鲁棒性与成本保护可通过 `LLM_TIMEOUT_MS`、`LLM_MAX_ATTEMPTS`、
+`LLM_MAX_OUTPUT_TOKENS`、`LLM_MAX_AGENT_CALLS_PER_TURN` 配置。
+
 ## 检查
 
 ```bash

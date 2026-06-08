@@ -95,11 +95,13 @@ function buildTavilyPayload(query, config) {
 }
 
 async function searchWithTavily(query, config) {
+  // config.signal 由 HTTP 请求入口一路透传，浏览器断开时终止正在进行的外部检索。
   const response = await fetchWithTimeout(
     "https://api.tavily.com/search",
     {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.key}` },
+      signal: config.signal,
       body: JSON.stringify(buildTavilyPayload(query, config))
     },
     config.timeoutMs
@@ -115,6 +117,7 @@ async function searchWithSerper(query, config) {
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-KEY": config.key },
+      signal: config.signal,
       body: JSON.stringify({ q: query, num: config.maxResults })
     },
     config.timeoutMs
@@ -128,7 +131,7 @@ async function searchWithBrave(query, config) {
   const params = new URLSearchParams({ q: query, count: String(config.maxResults) });
   const response = await fetchWithTimeout(
     `https://api.search.brave.com/res/v1/web/search?${params}`,
-    { headers: { Accept: "application/json", "X-Subscription-Token": config.key } },
+    { headers: { Accept: "application/json", "X-Subscription-Token": config.key }, signal: config.signal },
     config.timeoutMs
   );
   const data = await response.json().catch(() => ({}));

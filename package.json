@@ -10,8 +10,8 @@
     "start": "node server/index.js",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node backend/agents/animalAgentOrchestrator.test.js && node backend/services/titleService.test.js && node src/utils/markdown.test.js",
-    "check": "node --check api/index.js && node --check server/index.js && node --check backend/routes/apiRoutes.js && node --check backend/services/chatService.js && node --check backend/agents/animalAgentOrchestrator.js && node --check backend/context/layeredContext.js"
+    "test": "node backend/agents/animalAgentOrchestrator.test.js && node backend/services/titleService.test.js && node backend/services/llmService.test.js && node src/utils/markdown.test.js",
+    "check": "node --check api/index.js && node --check server/index.js && node --check backend/routes/apiRoutes.js && node --check backend/services/chatService.js && node --check backend/services/llmService.js && node --check backend/agents/animalAgentOrchestrator.js && node --check backend/context/layeredContext.js && node --check backend/repositories/postgresConversationRepository.js && node --check backend/repositories/jsonConversationRepository.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

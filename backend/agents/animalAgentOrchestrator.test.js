@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AGENT_PATTERNS, selectAgentPattern } from "./animalAgentOrchestrator.js";
+import {
+  AGENT_PATTERNS,
+  reviewAnswer,
+  selectAgentPattern,
+  shouldReviseAnswer
+} from "./animalAgentOrchestrator.js";
 import { buildLayeredContext, extractReferenceScripts } from "../context/layeredContext.js";
 
 test("registers TitleAgent as a summarizer pattern", () => {
@@ -51,4 +56,25 @@ test("injects DirectorAgent prompt and historical scripts into layered context",
   assert.match(context.messages[0].content, /DirectorAgent/);
   assert.match(context.messages[0].content, /你敢信/);
   assert.equal(context.stats.selectedAgent, "director");
+});
+
+test("critic requests one revision when retrieved evidence is not cited inline", () => {
+  const sources = [{ id: 1, title: "IUCN", url: "https://example.com" }];
+  const review = reviewAnswer("雪豹生活在高海拔地区。\n\n**信息来源**\n[1] IUCN", sources, {
+    plan: { shouldSearch: true }
+  });
+
+  assert.equal(review.ok, false);
+  assert.equal(shouldReviseAnswer(review, { remainingAgentCalls: 1 }), true);
+  assert.equal(shouldReviseAnswer(review, { remainingAgentCalls: 0 }), false);
+});
+
+test("critic accepts answers whose citations match available evidence", () => {
+  const sources = [{ id: 1, title: "IUCN", url: "https://example.com" }];
+  const review = reviewAnswer("雪豹生活在高海拔地区。[1]\n\n**信息来源**\n[1] IUCN", sources, {
+    plan: { shouldSearch: true }
+  });
+
+  assert.equal(review.ok, true);
+  assert.equal(shouldReviseAnswer(review, { remainingAgentCalls: 1 }), false);
 });

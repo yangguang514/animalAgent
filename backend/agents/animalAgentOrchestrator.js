@@ -77,14 +77,19 @@ function extractCitationIds(answer = "") {
 // Critic 使用确定性规则检查引用编号和来源列表，不额外调用模型。
 export function reviewAnswer(answer, sources = [], search = {}) {
   const availableIds = new Set(sources.map((source) => Number(source.id)));
-  const citationIds = extractCitationIds(answer);
+  const answerText = String(answer || "");
+  // 来源列表中的 [1] 不算正文引用，否则“只有来源列表、正文无证据标注”会被误判为通过。
+  const sourceSectionIndex = answerText.search(/(?:^|\n)\s*(?:\*\*)?(?:信息来源|sources?|source list)(?:\*\*)?\s*(?:\n|$)/i);
+  const answerBody = sourceSectionIndex >= 0 ? answerText.slice(0, sourceSectionIndex) : answerText;
+  const citationIds = extractCitationIds(answerText);
+  const inlineCitationIds = extractCitationIds(answerBody);
   const unknownIds = citationIds.filter((id) => !availableIds.has(id));
   const needsSources = Boolean(sources.length);
-  const hasSourceSection = /信息来源|sources|source list/i.test(answer);
+  const hasSourceSection = sourceSectionIndex >= 0;
   const warnings = [];
 
   if (unknownIds.length) warnings.push(`Answer cited unknown source ids: ${[...new Set(unknownIds)].join(", ")}.`);
-  if (needsSources && !citationIds.length) warnings.push("Search returned sources, but the answer did not include inline citations.");
+  if (needsSources && !inlineCitationIds.length) warnings.push("Search returned sources, but the answer did not include inline citations.");
   if (needsSources && !hasSourceSection) warnings.push("Search returned sources, but the answer did not include a source section.");
   if (!sources.length && search.plan?.shouldSearch) warnings.push("Planner wanted search, but no citable evidence was available.");
 
@@ -92,8 +97,16 @@ export function reviewAnswer(answer, sources = [], search = {}) {
     ok: warnings.length === 0,
     warnings,
     citations: citationIds,
+    inlineCitations: inlineCitationIds,
     availableSourceIds: [...availableIds]
   };
+}
+
+export function shouldReviseAnswer(review, options = {}) {
+  // 自动反思严格限制为有 warning、有开关、有剩余预算三者同时满足。
+  if (!review || review.ok) return false;
+  if (options.enabled === false) return false;
+  return Number(options.remainingAgentCalls ?? 1) > 0;
 }
 
 // 编排入口先选择回答角色，再执行原有的搜索规划。
@@ -107,7 +120,7 @@ export async function planAndResearch(messages, events = {}) {
   events.status?.(`Role selector chose ${selectedAgent.name}.`);
   events.status?.("Planner agent is checking whether retrieval is needed...");
 
-  const search = await searchWeb(messages);
+  const search = await searchWeb(messages, { signal: events.signal });
   traceLog.push(
     trace(
       "router",
@@ -130,10 +143,26 @@ export async function planAndResearch(messages, events = {}) {
 }
 
 // Writer 完成后追加 Critic 结果，供消息持久化、前端展示和问题排查使用。
-export function finalizeAgentRun(answer, sources = [], search = {}, traceLog = []) {
+export function finalizeAgentRun(answer, sources = [], search = {}, traceLog = [], options = {}) {
   const review = reviewAnswer(answer, sources, search);
+  // 把 Revision Agent 作为独立节点写进 trace，便于区分 Writer 原稿和修订后的最终质量。
+  const revisionTrace = options.revision
+    ? [
+        trace(
+          "revision_agent",
+          options.revision.succeeded ? "completed" : "failed",
+          options.revision.note || ""
+        )
+      ]
+    : [];
   return {
     review,
-    trace: [...traceLog, trace("critic", review.ok ? "passed" : "warnings", review.warnings.join(" | "))]
+    revision: options.revision || null,
+    trace: [
+      ...traceLog,
+      trace("critic", options.revision ? "revision_requested" : review.ok ? "passed" : "warnings", review.warnings.join(" | ")),
+      ...revisionTrace,
+      ...(options.revision ? [trace("critic", review.ok ? "passed_after_revision" : "warnings_remain", review.warnings.join(" | "))] : [])
+    ]
   };
 }

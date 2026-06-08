@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { dataDir } from "../config/env.js";
 
 const storePath = join(dataDir, "conversations.json");
+// JSON 文件没有数据库事务能力，用进程内 Promise 队列串行化“读取-修改-写回”，避免并发覆盖。
+let writeQueue = Promise.resolve();
 
 function createId() {
   return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -14,6 +16,13 @@ function now() {
 
 function cleanMessages(messages = []) {
   return messages.filter((message) => message.role !== "assistant" || String(message.content || "").trim());
+}
+
+function withWriteLock(operation) {
+  const run = writeQueue.then(operation, operation);
+  // 队列自身吞掉上一次失败，调用方仍收到原始异常，同时后续写操作可以继续执行。
+  writeQueue = run.catch(() => {});
+  return run;
 }
 
 function cleanConversation(conversation) {
@@ -72,18 +81,20 @@ export class JsonConversationRepository {
   }
 
   async create(title = "新的动物对话") {
-    const store = await readStore();
-    const timestamp = now();
-    const conversation = {
-      id: createId(),
-      title,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      messages: [welcomeMessage()]
-    };
-    store.conversations.unshift(conversation);
-    await writeStore(store);
-    return conversation;
+    return withWriteLock(async () => {
+      const store = await readStore();
+      const timestamp = now();
+      const conversation = {
+        id: createId(),
+        title,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        messages: [welcomeMessage()]
+      };
+      store.conversations.unshift(conversation);
+      await writeStore(store);
+      return conversation;
+    });
   }
 
   async import({ title = "已迁移的对话", messages = [] }) {
@@ -102,20 +113,87 @@ export class JsonConversationRepository {
   }
 
   async save(conversation) {
-    const store = await readStore();
-    const index = store.conversations.findIndex((item) => item.id === conversation.id);
-    const next = cleanConversation({ ...conversation, updatedAt: now() });
-    if (index === -1) store.conversations.unshift(next);
-    else store.conversations[index] = next;
-    await writeStore(store);
-    return next;
+    return withWriteLock(async () => {
+      const store = await readStore();
+      const index = store.conversations.findIndex((item) => item.id === conversation.id);
+      const next = cleanConversation({ ...conversation, updatedAt: now() });
+      if (index === -1) store.conversations.unshift(next);
+      else store.conversations[index] = next;
+      await writeStore(store);
+      return next;
+    });
+  }
+
+  async appendTurn(conversationId, userMessage, assistantMessage, title) {
+    return withWriteLock(async () => {
+      const store = await readStore();
+      const conversation = store.conversations.find((item) => item.id === conversationId);
+      if (!conversation) throw new Error(`Conversation not found: ${conversationId}`);
+      const activeMessage = conversation.messages.find((message) => message.status === "streaming");
+      if (activeMessage) {
+        // 正常生成任务不允许重入；超过 15 分钟则视为进程退出或断连遗留的陈旧任务。
+        const activeAt = new Date(activeMessage.updatedAt || activeMessage.createdAt || conversation.updatedAt).getTime();
+        if (Date.now() - activeAt < 15 * 60 * 1000) {
+          throw new Error("Conversation already has a streaming response.");
+        }
+        activeMessage.status = "interrupted";
+      }
+
+      const assistantMessageId = assistantMessage.id || createId();
+      const timestamp = now();
+      conversation.title = title;
+      conversation.updatedAt = timestamp;
+      conversation.messages.push(
+        // 用户消息和 assistant 空草稿一次写入，确保模型调用前就有可恢复的持久化记录。
+        { ...userMessage, id: userMessage.id || createId(), status: userMessage.status || "complete", createdAt: timestamp },
+        {
+          ...assistantMessage,
+          id: assistantMessageId,
+          status: assistantMessage.status || "streaming",
+          createdAt: timestamp,
+          updatedAt: timestamp
+        }
+      );
+      await writeStore(store);
+      return { conversation: cleanConversation(conversation), assistantMessageId };
+    });
+  }
+
+  async updateMessage(conversationId, messageId, patch = {}) {
+    // 流式生成只更新目标消息，不再用整个会话覆盖文件中的最新状态。
+    return withWriteLock(async () => {
+      const store = await readStore();
+      const conversation = store.conversations.find((item) => item.id === conversationId);
+      if (!conversation) throw new Error(`Conversation not found: ${conversationId}`);
+      const message = conversation.messages.find((item) => item.id === messageId);
+      if (!message) throw new Error(`Message not found: ${messageId}`);
+      Object.assign(message, patch, { updatedAt: now() });
+      conversation.updatedAt = now();
+      await writeStore(store);
+      return cleanConversation(conversation);
+    });
+  }
+
+  async updateTitle(conversationId, title) {
+    // 标题生成是独立的异步步骤，单独更新可以避免覆盖刚写入的回答。
+    return withWriteLock(async () => {
+      const store = await readStore();
+      const conversation = store.conversations.find((item) => item.id === conversationId);
+      if (!conversation) return null;
+      conversation.title = title;
+      conversation.updatedAt = now();
+      await writeStore(store);
+      return cleanConversation(conversation);
+    });
   }
 
   async delete(id) {
-    const store = await readStore();
-    const before = store.conversations.length;
-    store.conversations = store.conversations.filter((conversation) => conversation.id !== id);
-    await writeStore(store);
-    return before !== store.conversations.length;
+    return withWriteLock(async () => {
+      const store = await readStore();
+      const before = store.conversations.length;
+      store.conversations = store.conversations.filter((conversation) => conversation.id !== id);
+      await writeStore(store);
+      return before !== store.conversations.length;
+    });
   }
 }

@@ -163,7 +163,7 @@ ${latestQuestion(messages)}`
 }
 
 // 调用 LLM 生成搜索计划；失败时回退到本地启发式计划。
-async function generateSearchPlan(messages) {
+async function generateSearchPlan(messages, options = {}) {
   if (parseBooleanEnv("SEARCH_PLANNER_DISABLED", false)) {
     return fallbackSearchPlan(messages, "SEARCH_PLANNER_DISABLED=true; used local heuristic.");
   }
@@ -183,7 +183,8 @@ async function generateSearchPlan(messages) {
           model: process.env.SEARCH_PLANNER_MODEL || llmConfig.model,
           temperature: 0,
           messages: plannerPrompt(messages)
-        })
+        }),
+        signal: options.signal
       },
       Math.max(3000, Number(process.env.SEARCH_PLANNER_TIMEOUT_MS || 8000))
     );
@@ -196,6 +197,8 @@ async function generateSearchPlan(messages) {
     const content = data?.choices?.[0]?.message?.content;
     return normalizeSearchPlan(extractJsonObject(content), messages);
   } catch (error) {
+    // 用户主动取消必须向上抛出；只有真实的 Planner 故障才回退本地启发式规则。
+    if (options.signal?.aborted) throw error;
     return fallbackSearchPlan(
       messages,
       `Search planner failed; used local heuristic. ${error instanceof Error ? error.message : String(error)}`
@@ -204,8 +207,8 @@ async function generateSearchPlan(messages) {
 }
 
 // 搜索服务入口：先生成搜索计划，再按计划决定跳过、提示缺配置或执行搜索。
-export async function searchWeb(messages) {
-  const plan = await generateSearchPlan(messages);
+export async function searchWeb(messages, options = {}) {
+  const plan = await generateSearchPlan(messages, options);
   const config = getSearchConfig();
 
   if (!plan.shouldSearch) {
@@ -243,7 +246,12 @@ export async function searchWeb(messages) {
 
   let toolCall;
   try {
-    toolCall = await callTool(WEB_SEARCH_TOOL, { query: plan.query }, { searchConfig: config });
+    // 将同一个 AbortSignal 继续传给搜索工具，确保断连能取消整条 Planner -> Tool 链路。
+    toolCall = await callTool(
+      WEB_SEARCH_TOOL,
+      { query: plan.query },
+      { searchConfig: { ...config, signal: options.signal } }
+    );
     if (!toolCall.ok) throw new Error(toolCall.error);
   } catch (error) {
     if (config.strictErrors) throw error;

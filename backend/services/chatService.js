@@ -1,6 +1,12 @@
-import { finalizeAgentRun, planAndResearch } from "../agents/animalAgentOrchestrator.js";
+import {
+  finalizeAgentRun,
+  planAndResearch,
+  reviewAnswer,
+  shouldReviseAnswer
+} from "../agents/animalAgentOrchestrator.js";
+import { getLlmConfig } from "../config/env.js";
 import { conversationRepository, welcomeMessage } from "../repositories/conversationRepository.js";
-import { completeChat, streamChat } from "./llmService.js";
+import { completeChat, reviseChatAnswer, streamChat } from "./llmService.js";
 import { generateConversationTitle, generateLocalTitle } from "./titleService.js";
 
 // chatService 是业务编排层：
@@ -33,17 +39,76 @@ export async function clearConversation(id) {
   return conversationRepository.save(conversation);
 }
 
+function criticRevisionEnabled() {
+  return !/^(0|false|no|off)$/i.test(String(process.env.CRITIC_REVISION_ENABLED || "true"));
+}
+
+// Critic 先做低成本确定性检查；仅在有明确 warning 且调用预算充足时执行一次模型修订。
+// 修订失败保留 Writer 原稿，避免一个增强步骤让整个回答不可用。
+async function reviseIfNeeded(answer, messages, sources, search, options = {}) {
+  const initialReview = reviewAnswer(answer, sources, search);
+  const config = getLlmConfig();
+  const canRevise = shouldReviseAnswer(initialReview, {
+    enabled: criticRevisionEnabled(),
+    remainingAgentCalls: config.maxAgentCallsPerTurn - (options.agentCallsUsed || 1)
+  });
+  if (!canRevise) return { answer, revision: null, agentCallsUsed: options.agentCallsUsed || 1 };
+
+  options.onStatus?.("Critic 发现可修订问题，Revision Agent 正在改进回答...");
+  try {
+    const revisedAnswer = await reviseChatAnswer(answer, messages, sources, search, initialReview, {
+      signal: options.signal
+    });
+    return {
+      answer: revisedAnswer,
+      revision: {
+        attempted: true,
+        succeeded: true,
+        warningsBefore: initialReview.warnings,
+        note: "Revised once after deterministic critic warnings."
+      },
+      agentCallsUsed: (options.agentCallsUsed || 1) + 1
+    };
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    return {
+      answer,
+      revision: {
+        attempted: true,
+        succeeded: false,
+        warningsBefore: initialReview.warnings,
+        note: error instanceof Error ? error.message : String(error)
+      },
+      agentCallsUsed: (options.agentCallsUsed || 1) + 1
+    };
+  }
+}
+
 // 非流式接口 /api/chat 使用这个入口。
 // 流程和流式接口保持一致：先 planner/researcher，再 writer，最后 critic。
 export async function askOnce(messages) {
   const agentRun = await planAndResearch(messages);
 
   // 把角色选择结果透传到上下文层，由它切换动物科普或视频编导 system prompt。
-  const answer = await completeChat(messages, agentRun.search.sources, agentRun.search, {
+  const draftAnswer = await completeChat(messages, agentRun.search.sources, agentRun.search, {
     agentTrace: agentRun.trace,
     selectedAgent: agentRun.selectedAgent
   });
-  const finalRun = finalizeAgentRun(answer, agentRun.search.sources, agentRun.search, agentRun.trace);
+  const revisionResult = await reviseIfNeeded(
+    draftAnswer,
+    messages,
+    agentRun.search.sources,
+    agentRun.search,
+    { agentCallsUsed: 1 + (agentRun.search.plan?.fallback ? 0 : 1) }
+  );
+  const answer = revisionResult.answer;
+  const finalRun = finalizeAgentRun(
+    answer,
+    agentRun.search.sources,
+    agentRun.search,
+    agentRun.trace,
+    { revision: revisionResult.revision }
+  );
 
   return {
     answer,
@@ -70,14 +135,42 @@ export async function appendUserMessageAndStream(conversationId, content, events
   let conversation = await conversationRepository.get(conversationId);
   if (!conversation) conversation = await conversationRepository.create();
 
-  conversation.messages.push({ role: "user", content, sources: [] });
-  conversation.title = generateLocalTitle(conversation.messages);
-  conversation = await conversationRepository.save(conversation);
+  const userMessage = { role: "user", content, sources: [], status: "complete" };
+  const title = generateLocalTitle([...conversation.messages, userMessage]);
+  let appended;
+  try {
+    // 先持久化用户消息和 assistant 占位，再启动 Planner/Writer，刷新页面也不会丢失本轮任务。
+    appended = await conversationRepository.appendTurn(
+      conversation.id,
+      userMessage,
+      { role: "assistant", content: "", sources: [], status: "streaming" },
+      title
+    );
+  } catch (error) {
+    if (error?.code === "23505" || /streaming|unique/i.test(String(error?.message || ""))) {
+      throw new Error("这个会话已有回答正在生成，请等待完成或 15 分钟后重试。");
+    }
+    throw error;
+  }
+  conversation = appended.conversation;
+  const assistantMessageId = appended.assistantMessageId;
 
   // agentRun 同时包含角色选择、搜索结果和多智能体协作轨迹。
-  const agentRun = await planAndResearch(conversation.messages, events);
+  let agentRun;
+  try {
+    agentRun = await planAndResearch(conversation.messages, events);
+  } catch (error) {
+    // Planner 或搜索阶段断开时也结束草稿状态，否则唯一索引会一直阻止后续提问。
+    await conversationRepository
+      .updateMessage(conversation.id, assistantMessageId, {
+        content: "回答准备阶段已中断，请重新发送问题继续。",
+        status: events.signal?.aborted ? "interrupted" : "failed"
+      })
+      .catch(() => {});
+    throw error;
+  }
   const search = agentRun.search;
-  events.sources({
+  events.sources?.({
     enabled: search.enabled,
     skipped: search.skipped,
     query: search.query,
@@ -87,37 +180,110 @@ export async function appendUserMessageAndStream(conversationId, content, events
     sources: search.sources
   });
 
-  events.status("Writer agent 正在生成回答...");
+  events.status?.("Writer agent 正在生成回答...");
   let answer = "";
+  let persistedLength = 0;
+  let lastPersistedAt = 0;
+  let persistenceChain = Promise.resolve();
 
-  // streamChat 内部会调用 layeredContext，按 selectedAgent 选择 persona，
-  // 再把历史、参考脚本、证据和运行状态组装成 LLM messages。
-  answer = await streamChat(
-    conversation.messages,
-    search.sources,
-    search,
-    (delta) => {
-      answer += delta;
-      events.delta(delta);
-    },
-    { agentTrace: agentRun.trace, selectedAgent: agentRun.selectedAgent }
-  );
+  // 首个 token 立即保存；之后按字符数和时间双阈值节流，兼顾刷新可恢复性与数据库写入成本。
+  // persistenceChain 保证异步更新严格按生成顺序执行，较早的短快照不会覆盖较新的长快照。
+  const persistDraft = (force = false, patch = {}) => {
+    const now = Date.now();
+    const isFirstContent = persistedLength === 0 && answer.length > 0;
+    if (!force && !isFirstContent && answer.length - persistedLength < 240 && now - lastPersistedAt < 900) return;
+    const snapshot = answer;
+    persistedLength = snapshot.length;
+    lastPersistedAt = now;
+    persistenceChain = persistenceChain
+      .catch(() => {})
+      .then(() =>
+        conversationRepository.updateMessage(conversation.id, assistantMessageId, {
+          content: snapshot,
+          sources: search.sources,
+          status: patch.status || "streaming",
+          ...(patch.agents === undefined ? {} : { agents: patch.agents })
+        })
+      );
+  };
+
+  try {
+    // streamChat 内部会调用 layeredContext，按 selectedAgent 选择 persona，
+    // 再把历史、参考脚本、证据和运行状态组装成 LLM messages。
+    answer = await streamChat(
+      conversation.messages,
+      search.sources,
+      search,
+      (delta) => {
+        answer += delta;
+        events.delta?.(delta);
+        persistDraft();
+      },
+      {
+        agentTrace: agentRun.trace,
+        selectedAgent: agentRun.selectedAgent,
+        signal: events.signal
+      }
+    );
+    persistDraft(true);
+    await persistenceChain;
+  } catch (error) {
+    const interruptedAnswer = answer.trim() || "回答生成已中断，请重新发送问题继续。";
+    answer = interruptedAnswer;
+    persistDraft(true, { status: events.signal?.aborted ? "interrupted" : "failed" });
+    await persistenceChain.catch(() => {});
+    throw error;
+  }
 
   if (!answer.trim()) {
+    await conversationRepository.updateMessage(conversation.id, assistantMessageId, {
+      content: "模型没有返回有效回答，请稍后重试。",
+      status: "failed"
+    });
     throw new Error("Model did not return a valid answer.");
   }
 
-  // Critic 的检查结果不会阻断回答，但会保存到 agents 字段，方便后续展示或排查。
-  const finalRun = finalizeAgentRun(answer, search.sources, search, agentRun.trace);
-  conversation.messages.push({ role: "assistant", content: answer, sources: search.sources, agents: finalRun });
+  let revisionResult;
+  try {
+    revisionResult = await reviseIfNeeded(answer, conversation.messages, search.sources, search, {
+      signal: events.signal,
+      onStatus: events.status,
+      agentCallsUsed: 1 + (search.plan?.fallback ? 0 : 1)
+    });
+  } catch (error) {
+    await conversationRepository
+      .updateMessage(conversation.id, assistantMessageId, {
+        content: answer,
+        sources: search.sources,
+        status: events.signal?.aborted ? "interrupted" : "failed"
+      })
+      .catch(() => {});
+    throw error;
+  }
+  if (revisionResult.answer !== answer) {
+    answer = revisionResult.answer;
+    // Revision Agent 返回的是完整答案，因此前端应原位替换 Writer 草稿，而不是继续追加 delta。
+    events.replace?.(answer);
+  }
+
+  const finalRun = finalizeAgentRun(answer, search.sources, search, agentRun.trace, {
+    revision: revisionResult.revision
+  });
+  conversation = await conversationRepository.updateMessage(conversation.id, assistantMessageId, {
+    content: answer,
+    sources: search.sources,
+    agents: finalRun,
+    status: "complete"
+  });
 
   // 只在首个完整问答后用模型精炼一次标题，避免后续追问导致标题反复变化。
   const userMessageCount = conversation.messages.filter((message) => message.role === "user").length;
-  if (userMessageCount === 1) {
-    conversation.title = await generateConversationTitle(conversation.messages, {
+  // TitleAgent 同样计入每轮调用预算；预算已被 Revision Agent 用完时直接保留本地标题。
+  if (userMessageCount === 1 && revisionResult.agentCallsUsed < getLlmConfig().maxAgentCallsPerTurn) {
+    const generatedTitle = await generateConversationTitle(conversation.messages, {
       fallback: conversation.title
     });
+    conversation = await conversationRepository.updateTitle(conversation.id, generatedTitle);
   }
-  conversation = await conversationRepository.save(conversation);
   return conversation;
 }
