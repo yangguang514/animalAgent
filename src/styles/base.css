@@ -14,10 +14,16 @@ html {
   background: #dfe4db;
 }
 
+html,
 body {
   min-width: 320px;
-  min-height: 100dvh;
+  height: 100%;
   margin: 0;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
 }
 
 button,
