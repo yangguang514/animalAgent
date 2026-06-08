@@ -1,0 +1,32 @@
+{
+  "name": "animal-agent-vercel",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n client,api \"vite\" \"node server/index.js\"",
+    "dev:client": "vite",
+    "dev:server": "node server/index.js",
+    "start": "node server/index.js",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "node --check api/index.js && node --check server/index.js && node --check backend/routes/apiRoutes.js && node --check backend/services/chatService.js && node --check backend/agents/animalAgentOrchestrator.js && node --check backend/context/layeredContext.js"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "cors": "^2.8.5",
+    "dompurify": "^3.2.4",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "marked": "^15.0.7",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "concurrently": "^9.1.2",
+    "vite": "^6.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,568 @@
+:root {
+  --paper: #f6f2e8;
+  --paper-deep: #ebe5d7;
+  --ink: #202a24;
+  --muted: #68716a;
+  --forest: #284b3b;
+  --forest-deep: #1d392d;
+  --brass: #b58e48;
+  --line: #d4cdbf;
+}
+
+.app-shell {
+  min-height: 100dvh;
+  padding: 1.5rem;
+  background:
+    radial-gradient(circle at 78% 5%, rgba(181, 142, 72, 0.13), transparent 28rem),
+    linear-gradient(135deg, #d7dfd5, #e9e6dd);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 19rem minmax(0, 1fr);
+  width: min(76rem, 100%);
+  height: calc(100dvh - 3rem);
+  margin: auto;
+  overflow: hidden;
+  background: var(--paper);
+  box-shadow: 0 1.75rem 5rem rgba(39, 55, 45, 0.18);
+}
+
+.sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 2rem 1.5rem 1.5rem;
+  color: #f7f1e5;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    var(--forest);
+  background-size: 100% 2rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 3.2rem;
+  color: var(--forest-deep);
+  background: #d8c79d;
+  border-radius: 0.8rem 0.25rem;
+  box-shadow: inset 0 0 0 4px rgba(40, 75, 59, 0.1);
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 1.5rem;
+}
+
+.brand h1,
+.chat-header h2,
+.empty-state h2 {
+  margin: 0;
+  font-family: Georgia, "Songti SC", "SimSun", serif;
+  font-weight: 600;
+}
+
+.brand h1 {
+  font-size: 1.45rem;
+}
+
+.brand p {
+  margin: 0.25rem 0 0;
+  color: rgba(247, 241, 229, 0.62);
+  font-size: 0.75rem;
+}
+
+.new-chat {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(247, 241, 229, 0.28);
+  border-radius: 0.65rem 0.2rem;
+  color: inherit;
+  background: rgba(247, 241, 229, 0.08);
+  transition: 180ms ease;
+}
+
+.new-chat:hover {
+  background: rgba(247, 241, 229, 0.15);
+  transform: translateY(-1px);
+}
+
+.conversation-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: 1.75rem;
+}
+
+.section-label,
+.eyebrow {
+  margin: 0 0 0.65rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.section-label {
+  color: rgba(247, 241, 229, 0.48);
+}
+
+.conversation-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.conversation-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 2rem;
+  margin-bottom: 0.25rem;
+  border-left: 3px solid transparent;
+}
+
+.conversation-item.active {
+  border-color: #d8c79d;
+  background: rgba(247, 241, 229, 0.1);
+}
+
+.conversation-open,
+.conversation-remove {
+  border: 0;
+  color: inherit;
+  background: transparent;
+}
+
+.conversation-open {
+  min-width: 0;
+  padding: 0.65rem 0.7rem;
+  text-align: left;
+}
+
+.conversation-open strong,
+.conversation-open time {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-open strong {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.conversation-open time {
+  margin-top: 0.25rem;
+  color: rgba(247, 241, 229, 0.48);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.conversation-remove {
+  color: rgba(247, 241, 229, 0.45);
+  font-size: 1.15rem;
+}
+
+.conversation-remove:hover {
+  color: #fff;
+}
+
+.capabilities {
+  margin: 1rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(247, 241, 229, 0.14);
+}
+
+.capabilities div {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 0.4rem;
+  padding: 0.35rem 0;
+  font-size: 0.67rem;
+}
+
+.capabilities dt {
+  color: #decda8;
+}
+
+.capabilities dd {
+  margin: 0;
+  color: rgba(247, 241, 229, 0.48);
+}
+
+.chat-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 5.5rem;
+  padding: 1rem clamp(1.25rem, 4vw, 2.5rem);
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-header h2 {
+  max-width: 55vw;
+  overflow: hidden;
+  font-size: clamp(1.25rem, 2.4vw, 1.75rem);
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eyebrow {
+  margin-bottom: 0.25rem;
+  color: var(--brass);
+}
+
+.menu-button,
+.clear-button {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: transparent;
+}
+
+.menu-button {
+  display: none;
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.clear-button {
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.55rem 0.2rem;
+}
+
+.clear-button:hover {
+  color: var(--forest);
+  background: var(--paper-deep);
+}
+
+.error-banner {
+  margin: 0;
+  padding: 0.65rem 2.5rem;
+  color: #7c302b;
+  background: #f3ded8;
+  font-size: 0.82rem;
+}
+
+.messages {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2rem clamp(1.25rem, 6vw, 4.5rem);
+}
+
+.empty-state {
+  display: grid;
+  align-content: center;
+  min-height: 100%;
+  padding-bottom: 8vh;
+}
+
+.empty-kicker {
+  margin-bottom: 1rem;
+  color: var(--brass);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.empty-state h2 {
+  max-width: 12ch;
+  font-size: clamp(2.35rem, 5vw, 3.6rem);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+
+.empty-state p {
+  max-width: 46rem;
+  margin: 1.25rem 0 0;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.message {
+  display: grid;
+  gap: 0.45rem;
+  max-width: 48rem;
+  margin-bottom: 1.6rem;
+}
+
+.message.user {
+  width: fit-content;
+  max-width: 75%;
+  margin-left: auto;
+}
+
+.message-label {
+  color: #7d817c;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+.message.user .message-label {
+  text-align: right;
+}
+
+.bubble {
+  min-width: 0;
+  padding: 0.9rem 1.1rem;
+  overflow-wrap: anywhere;
+  line-height: 1.75;
+}
+
+.assistant .bubble {
+  border-left: 2px solid var(--brass);
+  background: var(--paper-deep);
+}
+
+.user .bubble {
+  border-radius: 0.85rem 0.25rem;
+  color: #fff;
+  background: var(--forest);
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown pre,
+.markdown table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.markdown code {
+  font-size: 0.88em;
+}
+
+.sources {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 1rem;
+}
+
+.sources a {
+  padding: 0.4rem 0.55rem;
+  overflow: hidden;
+  color: var(--forest);
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 0.75rem;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.typing,
+.loading-state {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.typing i,
+.loading-state span {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--brass);
+  animation: pulse 1s infinite alternate;
+}
+
+.typing i:nth-child(2),
+.loading-state span:nth-child(2) {
+  animation-delay: 160ms;
+}
+
+.typing i:nth-child(3),
+.loading-state span:nth-child(3) {
+  animation-delay: 320ms;
+}
+
+.loading-state {
+  justify-content: center;
+  padding-top: 20vh;
+}
+
+.chat-footer {
+  border-top: 1px solid var(--line);
+  background: rgba(246, 242, 232, 0.96);
+}
+
+.examples {
+  display: flex;
+  gap: 0.45rem;
+  padding: 0.8rem clamp(1.25rem, 4vw, 2.5rem) 0;
+  overflow-x: auto;
+}
+
+.examples button {
+  flex: 0 0 auto;
+  max-width: 19rem;
+  padding: 0.5rem 0.7rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem 0.15rem;
+  color: #596159;
+  background: transparent;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.examples button:hover {
+  color: var(--forest);
+  background: var(--paper-deep);
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  padding: 0.75rem clamp(1.25rem, 4vw, 2.5rem) 1.25rem;
+}
+
+.composer textarea {
+  min-height: 3.35rem;
+  max-height: 9rem;
+  padding: 0.85rem 0.95rem;
+  resize: vertical;
+  border: 1px solid #c8c1b3;
+  border-radius: 0.65rem 0.2rem;
+  color: var(--ink);
+  background: #fffdf8;
+}
+
+.composer button {
+  min-width: 5.5rem;
+  border: 0;
+  border-radius: 0.65rem 0.2rem;
+  color: #fff;
+  background: var(--forest);
+}
+
+.composer button:hover:not(:disabled) {
+  background: var(--forest-deep);
+  transform: translateY(-1px);
+}
+
+.composer button:disabled {
+  opacity: 0.55;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+@keyframes pulse {
+  from { opacity: 0.3; transform: translateY(0); }
+  to { opacity: 1; transform: translateY(-0.2rem); }
+}
+
+@media (max-width: 820px) {
+  .app-shell {
+    padding: 0;
+  }
+
+  .workspace {
+    display: block;
+    height: 100dvh;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    width: min(86vw, 20rem);
+    transform: translateX(-105%);
+    transition: transform 220ms ease;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: block;
+    border: 0;
+    background: rgba(26, 36, 30, 0.48);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease;
+  }
+
+  .sidebar-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .chat-panel {
+    height: 100dvh;
+  }
+
+  .chat-header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    min-height: 4.5rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .menu-button {
+    display: block;
+  }
+
+  .chat-header h2 {
+    max-width: 50vw;
+    font-size: 1.2rem;
+  }
+
+  .messages {
+    padding: 1.5rem 1rem;
+  }
+
+  .message.user {
+    max-width: 88%;
+  }
+
+  .examples {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .composer {
+    padding: 0.7rem 1rem max(0.9rem, env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
