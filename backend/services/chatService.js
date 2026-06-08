@@ -1,7 +1,7 @@
 import { finalizeAgentRun, planAndResearch } from "../agents/animalAgentOrchestrator.js";
 import { conversationRepository, welcomeMessage } from "../repositories/conversationRepository.js";
 import { completeChat, streamChat } from "./llmService.js";
-import { generateLocalTitle } from "./titleService.js";
+import { generateConversationTitle, generateLocalTitle } from "./titleService.js";
 
 // chatService 是业务编排层：
 // 路由层只负责收发 HTTP，这里负责保存消息、调用 agent、调用模型、落库。
@@ -110,7 +110,14 @@ export async function appendUserMessageAndStream(conversationId, content, events
   // Critic 的检查结果不会阻断回答，但会保存到 agents 字段，方便后续展示或排查。
   const finalRun = finalizeAgentRun(answer, search.sources, search, agentRun.trace);
   conversation.messages.push({ role: "assistant", content: answer, sources: search.sources, agents: finalRun });
-  conversation.title = generateLocalTitle(conversation.messages);
+
+  // 只在首个完整问答后用模型精炼一次标题，避免后续追问导致标题反复变化。
+  const userMessageCount = conversation.messages.filter((message) => message.role === "user").length;
+  if (userMessageCount === 1) {
+    conversation.title = await generateConversationTitle(conversation.messages, {
+      fallback: conversation.title
+    });
+  }
   conversation = await conversationRepository.save(conversation);
   return conversation;
 }

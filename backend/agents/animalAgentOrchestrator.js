@@ -9,6 +9,7 @@ export const AGENT_PATTERNS = [
   { name: "Layered Memory Manager", pattern: "memory", purpose: "Separate persona, summary, recent turns, evidence, and runtime metadata." },
   { name: "Animal Educator", pattern: "reactive", purpose: "Answer animal science and zoology questions accurately and accessibly." },
   { name: "DirectorAgent", pattern: "reactive", purpose: "Create duration-aware animal video plans, narration, and storyboard scripts." },
+  { name: "TitleAgent", pattern: "summarizer", purpose: "Compress the first completed exchange into a stable sidebar title." },
   { name: "Critic", pattern: "reflection", purpose: "Run deterministic post-checks for citation and evidence consistency." }
 ];
 

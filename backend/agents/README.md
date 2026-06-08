@@ -10,6 +10,7 @@ This project now exposes the agent workflow as explicit backend code instead of 
 - Layered Memory Manager: builds separated context layers before the writer model runs.
 - Animal Educator: answers animal-science questions.
 - DirectorAgent: creates duration-aware video plans and storyboard scripts.
+- TitleAgent: summarizes the first completed exchange into a stable sidebar title.
 - Critic: checks citation/source consistency after generation.
 
 The runtime entry points are `planAndResearch` and `finalizeAgentRun` in `animalAgentOrchestrator.js`.
@@ -32,6 +33,7 @@ This keeps token growth predictable and makes each context source auditable.
 - Context-routing pattern: video creation requests switch to `DirectorAgent`; knowledge questions stay with the animal educator.
 - Tool-use pattern: researcher agent uses `toolRegistry` instead of hard-coded search logic.
 - Memory pattern: context is separated into long-term, short-term, evidence, and runtime layers.
+- Summarizer pattern: `TitleAgent` creates concise conversation metadata without changing the main answer.
 - Reflection/Critic pattern: generated answers are reviewed for citation consistency.
 - Orchestrator pattern: `chatService` coordinates agents while preserving existing API behavior.
 

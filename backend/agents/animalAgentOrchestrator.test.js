@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { selectAgentPattern } from "./animalAgentOrchestrator.js";
+import { AGENT_PATTERNS, selectAgentPattern } from "./animalAgentOrchestrator.js";
 import { buildLayeredContext, extractReferenceScripts } from "../context/layeredContext.js";
+
+test("registers TitleAgent as a summarizer pattern", () => {
+  assert.ok(AGENT_PATTERNS.some((agent) => agent.name === "TitleAgent" && agent.pattern === "summarizer"));
+});
 
 test("routes explicit video production requests to DirectorAgent", () => {
   const selected = selectAgentPattern([
