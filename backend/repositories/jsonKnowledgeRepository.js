@@ -124,7 +124,7 @@ export class JsonKnowledgeRepository {
     });
   }
 
-  async search(queryEmbedding, limit = 8) {
+  async search(queryEmbedding, limit = 8, embeddingModel = "") {
     const store = await readStore();
     const documents = new Map(store.documents.map((document) => [document.id, document]));
     // 本地数据量较小时直接全量计算余弦相似度，行为与 pgvector 检索保持一致。
@@ -134,7 +134,11 @@ export class JsonKnowledgeRepository {
         document: documents.get(chunk.documentId),
         score: cosineSimilarity(queryEmbedding, chunk.embedding)
       }))
-      .filter((chunk) => chunk.document?.status === "ready")
+      .filter(
+        (chunk) =>
+          chunk.document?.status === "ready" &&
+          chunk.document.embeddingModel === embeddingModel
+      )
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
   }

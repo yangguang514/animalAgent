@@ -131,8 +131,9 @@ export async function planAndResearch(messages, events = {}) {
       .then((sources) => ({ sources, error: null }))
       .catch((error) => ({ sources: [], error }))
   ]);
+  const webSources = search.sources || [];
   // 合并后统一编号，Writer、Critic 和前端都只处理一套引用 id。
-  const combinedSources = [...knowledgeResult.sources, ...(search.sources || [])].map((source, index) => ({
+  const combinedSources = [...knowledgeResult.sources, ...webSources].map((source, index) => ({
     ...source,
     id: index + 1
   }));
@@ -166,8 +167,8 @@ export async function planAndResearch(messages, events = {}) {
     traceLog.push(
       trace(
         "researcher",
-        search.sources?.length ? "sources_ready" : "no_sources",
-        search.sources?.length ? `${search.sources.length} sources normalized.` : search.note || ""
+        webSources.length ? "sources_ready" : "no_sources",
+        webSources.length ? `${webSources.length} web sources normalized.` : search.note || ""
       )
     );
   }

@@ -164,7 +164,7 @@ export class PostgresKnowledgeRepository {
     return result.rowCount > 0;
   }
 
-  async search(queryEmbedding, limit = 8) {
+  async search(queryEmbedding, limit = 8, embeddingModel = "") {
     await this.ensureSchema();
     const sql = await this.getSql();
     const vector = JSON.stringify(queryEmbedding);
@@ -186,6 +186,7 @@ export class PostgresKnowledgeRepository {
       FROM animal_knowledge_chunks c
       JOIN animal_documents d ON d.id = c.document_id
       WHERE d.status = 'ready'
+        AND d.embedding_model = ${embeddingModel}
       ORDER BY c.embedding <=> ${vector}::vector
       LIMIT ${Math.max(1, Math.min(limit, 20))}
     `;

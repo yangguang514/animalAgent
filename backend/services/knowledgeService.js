@@ -22,16 +22,26 @@ function safeFilename(value) {
     .slice(0, 120);
 }
 
+function resolveBlobCredentials(req) {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    return { mode: "blob-token", options: {} };
+  }
+  const oidcToken =
+    req?.headers?.["x-vercel-oidc-token"] ||
+    process.env.VERCEL_OIDC_TOKEN;
+  if (oidcToken && process.env.BLOB_STORE_ID) {
+    return {
+      mode: "blob-presigned",
+      options: { oidcToken, storeId: process.env.BLOB_STORE_ID }
+    };
+  }
+  return { mode: process.env.VERCEL ? "disabled" : "direct", options: {} };
+}
+
 export async function createUploadToken(req, body) {
   const config = getKnowledgeConfig();
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    const oidcToken =
-      req?.headers?.["x-vercel-oidc-token"] ||
-      process.env.VERCEL_OIDC_TOKEN;
-    if (!oidcToken || !process.env.BLOB_STORE_ID) {
-      throw new Error("缺少 Vercel Blob OIDC 凭证或 BLOB_STORE_ID。");
-    }
-
+  const credentials = resolveBlobCredentials(req);
+  if (credentials.mode === "blob-presigned") {
     // OIDC 不能签发传统 client token，必须改用短期 signed token 和 presigned URL。
     return handleUploadPresigned({
       request: req,
@@ -42,8 +52,7 @@ export async function createUploadToken(req, body) {
         if (!isSupportedDocument(filename, "")) throw new Error("不支持该文件类型。");
         const validUntil = Date.now() + 15 * 60 * 1000;
         const token = await issueSignedToken({
-          oidcToken,
-          storeId: process.env.BLOB_STORE_ID,
+          ...credentials.options,
           pathname,
           operations: ["put"],
           allowedContentTypes: ALLOWED_CONTENT_TYPES,
@@ -55,12 +64,15 @@ export async function createUploadToken(req, body) {
           urlOptions: {
             allowedContentTypes: ALLOWED_CONTENT_TYPES,
             maximumSizeInBytes: config.maxFileBytes,
-            addRandomSuffix: true,
+            addRandomSuffix: false,
             validUntil
           }
         };
       }
     });
+  }
+  if (credentials.mode !== "blob-token") {
+    throw new Error("缺少可用的 Vercel Blob 凭证。");
   }
 
   // 旧版 read-write token 继续使用传统 client upload 协议。
@@ -74,7 +86,7 @@ export async function createUploadToken(req, body) {
       return {
         allowedContentTypes: ALLOWED_CONTENT_TYPES,
         maximumSizeInBytes: config.maxFileBytes,
-        addRandomSuffix: true,
+        addRandomSuffix: false,
         tokenPayload: JSON.stringify({ filename })
       };
     },
@@ -83,7 +95,19 @@ export async function createUploadToken(req, body) {
 }
 
 export async function listDocuments() {
-  return knowledgeRepository.listDocuments();
+  const documents = await knowledgeRepository.listDocuments();
+  return documents.map((document) => ({
+    id: document.id,
+    filename: document.filename,
+    contentType: document.contentType,
+    size: document.size,
+    status: document.status,
+    chunkCount: document.chunkCount,
+    embeddingModel: document.embeddingModel,
+    error: document.error,
+    createdAt: document.createdAt,
+    updatedAt: document.updatedAt
+  }));
 }
 
 async function processDocumentBuffer(input, buffer) {
@@ -134,30 +158,34 @@ async function processDocumentBuffer(input, buffer) {
   }
 }
 
-function blobCredentialOptions(req) {
-  const oidcToken =
-    req?.headers?.["x-vercel-oidc-token"] ||
-    process.env.VERCEL_OIDC_TOKEN;
-  return oidcToken
-    ? { oidcToken, storeId: process.env.BLOB_STORE_ID }
-    : {};
-}
-
 export async function processUploadedDocument(input, req) {
-  // 生产环境只接受本项目 Blob 域名，避免后端被用作任意 URL 下载代理。
+  // 生产环境只接受本项目 Blob 域名和知识库前缀，避免读取 Store 中的其他对象。
   if (!/^https:\/\/.+\.blob\.vercel-storage\.com\//i.test(String(input.url || ""))) {
     throw new Error("文件地址不是有效的 Vercel Blob URL。");
   }
-  const result = await get(input.pathname || input.url, {
+  const pathname = String(input.pathname || "");
+  if (!pathname.startsWith("knowledge/")) {
+    throw new Error("文件路径不属于知识库目录。");
+  }
+  const result = await get(pathname, {
     access: "private",
     useCache: false,
-    ...blobCredentialOptions(req)
+    ...resolveBlobCredentials(req).options
   });
   if (!result || result.statusCode !== 200 || !result.stream) {
     throw new Error("读取上传文件失败：Blob 内容不可用。");
   }
   const buffer = await new Response(result.stream).arrayBuffer();
-  return processDocumentBuffer(input, buffer);
+  return processDocumentBuffer(
+    {
+      ...input,
+      pathname: result.blob.pathname,
+      url: result.blob.url,
+      size: result.blob.size,
+      contentType: result.blob.contentType || input.contentType
+    },
+    buffer
+  );
 }
 
 export async function processDirectDocument(input, buffer) {
@@ -168,28 +196,18 @@ export async function processDirectDocument(input, buffer) {
   return processDocumentBuffer({ ...input, url: "", pathname: "" }, buffer);
 }
 
-export function hasBlobCredentials(req) {
-  const oidcToken =
-    req?.headers?.["x-vercel-oidc-token"] ||
-    process.env.VERCEL_OIDC_TOKEN;
-  return Boolean(
-    process.env.BLOB_READ_WRITE_TOKEN ||
-      (oidcToken && process.env.BLOB_STORE_ID)
-  );
-}
-
 export function getBlobUploadMode(req) {
-  if (process.env.BLOB_READ_WRITE_TOKEN) return "blob-token";
-  return hasBlobCredentials(req) ? "blob-presigned" : process.env.VERCEL ? "disabled" : "direct";
+  return resolveBlobCredentials(req).mode;
 }
 
 export async function deleteDocument(id, req) {
   const documents = await knowledgeRepository.listDocuments();
   const document = documents.find((item) => item.id === id);
   const deleted = await knowledgeRepository.deleteDocument(id);
-  if (deleted && document?.url && hasBlobCredentials(req)) {
+  const credentials = resolveBlobCredentials(req);
+  if (deleted && document?.url && credentials.mode.startsWith("blob-")) {
     await del(document.url, {
-      ...blobCredentialOptions(req)
+      ...credentials.options
     }).catch(() => {});
   }
   return deleted;
@@ -199,18 +217,22 @@ export async function retrieveKnowledge(query) {
   const config = getKnowledgeConfig();
   const text = String(query || "").trim();
   if (!text || config.retrievalDisabled) return [];
-  const documents = await knowledgeRepository.listDocuments();
-  if (!documents.some((document) => document.status === "ready")) return [];
 
   // 查询与文档块必须使用同一模型和维度，否则相似度没有可比性。
+  const embeddingConfig = getEmbeddingConfig();
   const embedding = await embedQuery(text);
-  const matches = await knowledgeRepository.search(embedding, config.retrievalLimit);
+  const matches = await knowledgeRepository.search(
+    embedding,
+    config.retrievalLimit,
+    embeddingConfig.model
+  );
   return matches
     .filter((match) => match.score >= config.minimumScore)
     .map((match) => ({
       type: "knowledge",
       title: match.document.filename,
-      url: match.document.url,
+      // Blob 为私有资源，引用仅展示文件名和页码，不向浏览器暴露不可访问的 URL。
+      url: "",
       snippet: match.content,
       pageNumber: match.pageNumber,
       heading: match.heading,
