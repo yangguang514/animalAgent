@@ -1,5 +1,5 @@
-import { del } from "@vercel/blob";
-import { handleUpload } from "@vercel/blob/client";
+import { del, issueSignedToken } from "@vercel/blob";
+import { handleUpload, handleUploadPresigned } from "@vercel/blob/client";
 import { getEmbeddingConfig, getKnowledgeConfig } from "../config/env.js";
 import { knowledgeRepository } from "../repositories/knowledgeRepository.js";
 import { chunkDocument } from "./documentChunker.js";
@@ -24,7 +24,46 @@ function safeFilename(value) {
 
 export async function createUploadToken(req, body) {
   const config = getKnowledgeConfig();
-  // handleUpload 会自动使用旧版 BLOB_READ_WRITE_TOKEN，或新版 OIDC + BLOB_STORE_ID。
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    const oidcToken =
+      req?.headers?.["x-vercel-oidc-token"] ||
+      process.env.VERCEL_OIDC_TOKEN;
+    if (!oidcToken || !process.env.BLOB_STORE_ID) {
+      throw new Error("缺少 Vercel Blob OIDC 凭证或 BLOB_STORE_ID。");
+    }
+
+    // OIDC 不能签发传统 client token，必须改用短期 signed token 和 presigned URL。
+    return handleUploadPresigned({
+      request: req,
+      body,
+      webhookPublicKey: process.env.BLOB_WEBHOOK_PUBLIC_KEY,
+      getSignedToken: async (pathname) => {
+        const filename = safeFilename(pathname.split("/").pop());
+        if (!isSupportedDocument(filename, "")) throw new Error("不支持该文件类型。");
+        const validUntil = Date.now() + 15 * 60 * 1000;
+        const token = await issueSignedToken({
+          oidcToken,
+          storeId: process.env.BLOB_STORE_ID,
+          pathname,
+          operations: ["put"],
+          allowedContentTypes: ALLOWED_CONTENT_TYPES,
+          maximumSizeInBytes: config.maxFileBytes,
+          validUntil
+        });
+        return {
+          token,
+          urlOptions: {
+            allowedContentTypes: ALLOWED_CONTENT_TYPES,
+            maximumSizeInBytes: config.maxFileBytes,
+            addRandomSuffix: true,
+            validUntil
+          }
+        };
+      }
+    });
+  }
+
+  // 旧版 read-write token 继续使用传统 client upload 协议。
   return handleUpload({
     request: req,
     body,
@@ -121,6 +160,11 @@ export function hasBlobCredentials(req) {
     process.env.BLOB_READ_WRITE_TOKEN ||
       (oidcToken && process.env.BLOB_STORE_ID)
   );
+}
+
+export function getBlobUploadMode(req) {
+  if (process.env.BLOB_READ_WRITE_TOKEN) return "blob-token";
+  return hasBlobCredentials(req) ? "blob-presigned" : process.env.VERCEL ? "disabled" : "direct";
 }
 
 export async function deleteDocument(id, req) {

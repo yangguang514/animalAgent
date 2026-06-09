@@ -15,7 +15,7 @@ import { sendSse, setupSse } from "../utils/sse.js";
 import {
   createUploadToken,
   deleteDocument,
-  hasBlobCredentials,
+  getBlobUploadMode,
   listDocuments,
   processDirectDocument,
   processUploadedDocument
@@ -46,7 +46,7 @@ export async function handleApi(req, res) {
     if (req.method === "GET" && parts[1] === "documents" && parts.length === 2) {
       sendJson(res, 200, {
         documents: await listDocuments(),
-        uploadMode: hasBlobCredentials(req) ? "blob" : process.env.VERCEL ? "disabled" : "direct",
+        uploadMode: getBlobUploadMode(req),
         maxFileBytes: getKnowledgeConfig().maxFileBytes
       });
       return true;

@@ -1,5 +1,5 @@
 <script setup>
-import { upload } from "@vercel/blob/client";
+import { upload, uploadPresigned } from "@vercel/blob/client";
 import { computed, onMounted, ref } from "vue";
 import { chatApi } from "../services/chatApi.js";
 
@@ -12,7 +12,7 @@ const progress = ref(0);
 const phase = ref("idle");
 const error = ref("");
 const input = ref(null);
-const uploadMode = ref("blob");
+const uploadMode = ref("blob-token");
 const maxFileBytes = ref(25 * 1024 * 1024);
 
 const readyCount = computed(
@@ -40,7 +40,7 @@ async function refresh() {
     const data = await chatApi.listDocuments();
     documents.value = data.documents || [];
     // 后端根据运行环境决定直传方式，前端不自行推断是否位于 Vercel。
-    uploadMode.value = data.uploadMode || "blob";
+    uploadMode.value = data.uploadMode || "blob-token";
     maxFileBytes.value = Number(data.maxFileBytes || maxFileBytes.value);
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause);
@@ -68,7 +68,8 @@ async function chooseFile(event) {
       phase.value = "processing";
       await chatApi.uploadDocumentDirect(file);
     } else {
-      const blob = await upload(`knowledge/${file.name}`, file, {
+      const uploadFile = uploadMode.value === "blob-presigned" ? uploadPresigned : upload;
+      const blob = await uploadFile(`knowledge/${file.name}`, file, {
         access: "public",
         handleUploadUrl: "/api/documents/upload",
         multipart: file.size > 5 * 1024 * 1024,
