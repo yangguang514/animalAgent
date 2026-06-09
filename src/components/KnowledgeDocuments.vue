@@ -34,6 +34,14 @@ function statusLabel(document) {
   return "正在解析并生成向量";
 }
 
+function blobPathname(file) {
+  const extension = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "bin";
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  // Blob 签名 scope 对 pathname 做严格字节匹配。对象路径保持 ASCII，
+  // 原始中文文件名继续通过 processDocument 参数保存和展示。
+  return `knowledge/${id}.${extension}`;
+}
+
 async function refresh() {
   loading.value = true;
   try {
@@ -69,7 +77,7 @@ async function chooseFile(event) {
       await chatApi.uploadDocumentDirect(file);
     } else {
       const uploadFile = uploadMode.value === "blob-presigned" ? uploadPresigned : upload;
-      const blob = await uploadFile(`knowledge/${file.name}`, file, {
+      const blob = await uploadFile(blobPathname(file), file, {
         access: "public",
         handleUploadUrl: "/api/documents/upload",
         multipart: file.size > 5 * 1024 * 1024,
