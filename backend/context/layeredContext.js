@@ -118,6 +118,7 @@ function formatKnowledgeLayer(sources = []) {
     return "No uploaded knowledge document matched this request. Do not invent document citations.";
   }
 
+  // 文档证据单独成层，明确告诉模型页码引用与网页 URL 引用不是同一种来源。
   const blocks = knowledgeSources
     .map((source) => {
       const location = [

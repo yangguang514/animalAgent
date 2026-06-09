@@ -30,6 +30,7 @@ async function writeStore(store) {
 }
 
 function withWriteLock(operation) {
+  // JSON 没有事务，用进程内队列串行化读改写，避免并发上传互相覆盖。
   const run = writeQueue.then(operation, operation);
   writeQueue = run.catch(() => {});
   return run;
@@ -126,6 +127,7 @@ export class JsonKnowledgeRepository {
   async search(queryEmbedding, limit = 8) {
     const store = await readStore();
     const documents = new Map(store.documents.map((document) => [document.id, document]));
+    // 本地数据量较小时直接全量计算余弦相似度，行为与 pgvector 检索保持一致。
     return store.chunks
       .map((chunk) => ({
         ...chunk,

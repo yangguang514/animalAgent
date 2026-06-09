@@ -47,6 +47,7 @@ export class PostgresKnowledgeRepository {
       if (dimensions !== 1536) {
         throw new Error("当前 pgvector 表固定为 1536 维，请将 EMBEDDING_DIMENSIONS 设置为 1536。");
       }
+      // 当前表结构固定为 1536 维，模型切换维度时必须显式迁移并重新生成全部向量。
       await sql`CREATE EXTENSION IF NOT EXISTS vector`;
       await sql`
         CREATE TABLE IF NOT EXISTS animal_documents (
@@ -117,6 +118,7 @@ export class PostgresKnowledgeRepository {
   async completeDocument(id, chunks) {
     await this.ensureSchema();
     const sql = await this.getSql();
+    // 块替换和文档 ready 状态在同一事务提交，避免检索到半成品文档。
     await sql.transaction((txn) => [
       txn`DELETE FROM animal_knowledge_chunks WHERE document_id = ${id}`,
       ...chunks.map(
@@ -166,6 +168,7 @@ export class PostgresKnowledgeRepository {
     await this.ensureSchema();
     const sql = await this.getSql();
     const vector = JSON.stringify(queryEmbedding);
+    // HNSW 索引按 cosine distance 排序，再转换成更直观的相似度分数。
     const result = await sql`
       SELECT
         c.id,

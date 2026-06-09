@@ -123,12 +123,15 @@ export async function planAndResearch(messages, events = {}) {
 
   const latestQuestion = recentUserMessages(messages, 1)[0] || "";
   events.status?.("正在检索已导入的知识文件...");
+  // 知识库与网页搜索互不依赖，并行执行可以避免串行增加首 token 延迟。
+  // 知识检索失败会降级为空结果，不阻断原有网页搜索和回答链路。
   const [search, knowledgeResult] = await Promise.all([
     searchWeb(messages, { signal: events.signal }),
     retrieveKnowledge(latestQuestion)
       .then((sources) => ({ sources, error: null }))
       .catch((error) => ({ sources: [], error }))
   ]);
+  // 合并后统一编号，Writer、Critic 和前端都只处理一套引用 id。
   const combinedSources = [...knowledgeResult.sources, ...(search.sources || [])].map((source, index) => ({
     ...source,
     id: index + 1

@@ -23,6 +23,7 @@ function splitLongParagraph(paragraph, maxChars) {
   while (cursor < paragraph.length) {
     let end = Math.min(cursor + maxChars, paragraph.length);
     if (end < paragraph.length) {
+      // 优先在句末截断，减少一个语义单元被机械切成两半的情况。
       const boundary = Math.max(
         paragraph.lastIndexOf("。", end),
         paragraph.lastIndexOf("！", end),
@@ -68,6 +69,7 @@ export function chunkDocument(sections = [], options = {}) {
         chunkIndex: chunks.length,
         tokenCount: Math.ceil(content.length / 2.5)
       });
+      // 将上一块末尾带入下一块，保留跨块指代和上下句关系。
       buffer = trailingOverlap(content, overlapChars);
     };
 

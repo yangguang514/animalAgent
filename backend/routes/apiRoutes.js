@@ -15,6 +15,7 @@ import { sendSse, setupSse } from "../utils/sse.js";
 import {
   createUploadToken,
   deleteDocument,
+  hasBlobCredentials,
   listDocuments,
   processDirectDocument,
   processUploadedDocument
@@ -45,7 +46,7 @@ export async function handleApi(req, res) {
     if (req.method === "GET" && parts[1] === "documents" && parts.length === 2) {
       sendJson(res, 200, {
         documents: await listDocuments(),
-        uploadMode: process.env.BLOB_READ_WRITE_TOKEN ? "blob" : process.env.VERCEL ? "disabled" : "direct",
+        uploadMode: hasBlobCredentials(req) ? "blob" : process.env.VERCEL ? "disabled" : "direct",
         maxFileBytes: getKnowledgeConfig().maxFileBytes
       });
       return true;
@@ -86,7 +87,7 @@ export async function handleApi(req, res) {
     }
 
     if (req.method === "DELETE" && parts[1] === "documents" && parts[2]) {
-      const deleted = await deleteDocument(parts[2]);
+      const deleted = await deleteDocument(parts[2], req);
       sendJson(res, deleted ? 200 : 404, deleted ? { ok: true } : { error: "Document not found" });
       return true;
     }

@@ -15,6 +15,7 @@ const ALLOWED_CONTENT_TYPES = [
 ];
 
 function safeFilename(value) {
+  // 文件名会进入 Blob 路径、数据库和提示词，因此只保留可读且安全的字符。
   return String(value || "document")
     .replace(/[^\p{L}\p{N}._-]+/gu, "-")
     .replace(/^-+|-+$/g, "")
@@ -23,13 +24,12 @@ function safeFilename(value) {
 
 export async function createUploadToken(req, body) {
   const config = getKnowledgeConfig();
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    throw new Error("缺少 BLOB_READ_WRITE_TOKEN，无法上传知识文件。");
-  }
+  // handleUpload 会自动使用旧版 BLOB_READ_WRITE_TOKEN，或新版 OIDC + BLOB_STORE_ID。
   return handleUpload({
     request: req,
     body,
     onBeforeGenerateToken: async (pathname) => {
+      // 上传前在服务端约束类型和大小，避免客户端绕过 accept 属性。
       const filename = safeFilename(pathname.split("/").pop());
       if (!isSupportedDocument(filename, "")) throw new Error("不支持该文件类型。");
       return {
@@ -55,6 +55,7 @@ async function processDocumentBuffer(input, buffer) {
   if (!isSupportedDocument(filename, contentType)) throw new Error("不支持该文件类型。");
   if (size > config.maxFileBytes) throw new Error(`文件不能超过 ${config.maxFileMb} MB。`);
 
+  // 先保存 processing 状态，后续任何解析或向量化异常都能在界面中被追踪。
   const document = await knowledgeRepository.createDocument({
     filename,
     contentType,
@@ -72,6 +73,7 @@ async function processDocumentBuffer(input, buffer) {
     });
     if (!chunks.length) throw new Error("文件中没有可提取的文本，扫描版 PDF 暂不支持。");
 
+    // 文件名和章节标题共同参与向量化，可提高短问题对正确章节的召回率。
     const embeddingInputs = chunks.map((chunk) =>
       [filename, chunk.heading, chunk.content].filter(Boolean).join("\n")
     );
@@ -94,6 +96,7 @@ async function processDocumentBuffer(input, buffer) {
 }
 
 export async function processUploadedDocument(input) {
+  // 生产环境只接受本项目 Blob 域名，避免后端被用作任意 URL 下载代理。
   if (!/^https:\/\/.+\.blob\.vercel-storage\.com\//i.test(String(input.url || ""))) {
     throw new Error("文件地址不是有效的 Vercel Blob URL。");
   }
@@ -103,18 +106,34 @@ export async function processUploadedDocument(input) {
 }
 
 export async function processDirectDocument(input, buffer) {
+  // 直传仅服务本地开发；Vercel 必须绕过函数请求体限制，改走 Blob 客户端直传。
   if (process.env.VERCEL) {
     throw new Error("Vercel 部署必须使用 Blob 客户端直传。");
   }
   return processDocumentBuffer({ ...input, url: "", pathname: "" }, buffer);
 }
 
-export async function deleteDocument(id) {
+export function hasBlobCredentials(req) {
+  const oidcToken =
+    req?.headers?.["x-vercel-oidc-token"] ||
+    process.env.VERCEL_OIDC_TOKEN;
+  return Boolean(
+    process.env.BLOB_READ_WRITE_TOKEN ||
+      (oidcToken && process.env.BLOB_STORE_ID)
+  );
+}
+
+export async function deleteDocument(id, req) {
   const documents = await knowledgeRepository.listDocuments();
   const document = documents.find((item) => item.id === id);
   const deleted = await knowledgeRepository.deleteDocument(id);
-  if (deleted && document?.url && process.env.BLOB_READ_WRITE_TOKEN) {
-    await del(document.url).catch(() => {});
+  if (deleted && document?.url && hasBlobCredentials(req)) {
+    const oidcToken =
+      req?.headers?.["x-vercel-oidc-token"] ||
+      process.env.VERCEL_OIDC_TOKEN;
+    await del(document.url, {
+      ...(oidcToken ? { oidcToken, storeId: process.env.BLOB_STORE_ID } : {})
+    }).catch(() => {});
   }
   return deleted;
 }
@@ -126,6 +145,7 @@ export async function retrieveKnowledge(query) {
   const documents = await knowledgeRepository.listDocuments();
   if (!documents.some((document) => document.status === "ready")) return [];
 
+  // 查询与文档块必须使用同一模型和维度，否则相似度没有可比性。
   const embedding = await embedQuery(text);
   const matches = await knowledgeRepository.search(embedding, config.retrievalLimit);
   return matches

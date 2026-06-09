@@ -39,6 +39,7 @@ async function refresh() {
   try {
     const data = await chatApi.listDocuments();
     documents.value = data.documents || [];
+    // 后端根据运行环境决定直传方式，前端不自行推断是否位于 Vercel。
     uploadMode.value = data.uploadMode || "blob";
     maxFileBytes.value = Number(data.maxFileBytes || maxFileBytes.value);
   } catch (cause) {
@@ -62,6 +63,7 @@ async function chooseFile(event) {
     if (file.size > maxFileBytes.value) {
       throw new Error(`文件不能超过 ${Math.round(maxFileBytes.value / 1024 / 1024)} MB。`);
     }
+    // 本地直接发给 Express；生产环境先直传 Blob，再通知后端解析 Blob URL。
     if (uploadMode.value === "direct") {
       phase.value = "processing";
       await chatApi.uploadDocumentDirect(file);

@@ -7,6 +7,7 @@ function normalizeVector(vector) {
 }
 
 function hashText(text, dimensions) {
+  // 本地回退向量只用于无 API Key 的开发调试，保证流程可跑通，不替代生产语义模型。
   const vector = new Array(dimensions).fill(0);
   const normalized = String(text || "").normalize("NFKC").toLowerCase();
   const units = [...normalized];
@@ -59,6 +60,7 @@ export async function embedTexts(texts = []) {
     return texts.map((text) => hashText(text, config.dimensions));
   }
 
+  // 分批请求以控制单次 payload，并兼容多数 OpenAI-compatible 服务的批量限制。
   const output = [];
   for (let index = 0; index < texts.length; index += config.batchSize) {
     const batch = texts.slice(index, index + config.batchSize);
