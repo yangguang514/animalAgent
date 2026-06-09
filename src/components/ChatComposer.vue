@@ -1,5 +1,6 @@
 <script setup>
 import { nextTick, ref } from "vue";
+import KnowledgeDocuments from "./KnowledgeDocuments.vue";
 
 defineProps({ busy: { type: Boolean, default: false } });
 const emit = defineEmits(["send"]);
@@ -28,6 +29,7 @@ function useExample(example) {
 
 <template>
   <footer class="chat-footer">
+    <KnowledgeDocuments :busy="busy" />
     <div class="examples" aria-label="示例问题">
       <button v-for="example in examples" :key="example" type="button" @click="useExample(example)">
         {{ example }}

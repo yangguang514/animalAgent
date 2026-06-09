@@ -10,8 +10,16 @@ import {
 } from "../services/chatService.js";
 import { AGENT_PATTERNS } from "../agents/animalAgentOrchestrator.js";
 import { generateLocalTitle } from "../services/titleService.js";
-import { getRouteParts, readJsonBody, sanitizeMessages, sendJson } from "../utils/http.js";
+import { getRouteParts, readBinaryBody, readJsonBody, sanitizeMessages, sendJson } from "../utils/http.js";
 import { sendSse, setupSse } from "../utils/sse.js";
+import {
+  createUploadToken,
+  deleteDocument,
+  listDocuments,
+  processDirectDocument,
+  processUploadedDocument
+} from "../services/knowledgeService.js";
+import { getKnowledgeConfig } from "../config/env.js";
 
 export async function handleApi(req, res) {
   const parts = getRouteParts(req.url);
@@ -31,6 +39,55 @@ export async function handleApi(req, res) {
 
     if (req.method === "GET" && parts[1] === "agents") {
       sendJson(res, 200, { patterns: AGENT_PATTERNS });
+      return true;
+    }
+
+    if (req.method === "GET" && parts[1] === "documents" && parts.length === 2) {
+      sendJson(res, 200, {
+        documents: await listDocuments(),
+        uploadMode: process.env.BLOB_READ_WRITE_TOKEN ? "blob" : process.env.VERCEL ? "disabled" : "direct",
+        maxFileBytes: getKnowledgeConfig().maxFileBytes
+      });
+      return true;
+    }
+
+    if (req.method === "POST" && parts[1] === "documents" && parts[2] === "upload") {
+      const body = await readJsonBody(req);
+      sendJson(res, 200, await createUploadToken(req, body));
+      return true;
+    }
+
+    if (req.method === "POST" && parts[1] === "documents" && parts[2] === "process") {
+      const body = await readJsonBody(req);
+      const document = await processUploadedDocument({
+        filename: body.filename,
+        contentType: body.contentType,
+        size: body.size,
+        url: body.url,
+        pathname: body.pathname
+      });
+      sendJson(res, 201, { document });
+      return true;
+    }
+
+    if (req.method === "POST" && parts[1] === "documents" && parts[2] === "direct") {
+      const config = getKnowledgeConfig();
+      const buffer = await readBinaryBody(req, config.maxFileBytes);
+      const document = await processDirectDocument(
+        {
+          filename: decodeURIComponent(String(req.headers["x-file-name"] || "document")),
+          contentType: String(req.headers["content-type"] || "application/octet-stream"),
+          size: buffer.length
+        },
+        buffer
+      );
+      sendJson(res, 201, { document });
+      return true;
+    }
+
+    if (req.method === "DELETE" && parts[1] === "documents" && parts[2]) {
+      const deleted = await deleteDocument(parts[2]);
+      sendJson(res, deleted ? 200 : 404, deleted ? { ok: true } : { error: "Document not found" });
       return true;
     }
 

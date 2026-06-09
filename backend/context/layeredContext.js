@@ -79,8 +79,9 @@ function buildConversationSummary(messages = []) {
 // evidence 层：专门管理外部证据。
 // 有搜索结果时放来源；跳过搜索或搜索失败时，也明确告诉模型不要编造引用。
 function formatEvidenceLayer(sources = [], search = {}) {
-  if (sources.length) {
-    const blocks = sources
+  const webSources = sources.filter((source) => source.type !== "knowledge");
+  if (webSources.length) {
+    const blocks = webSources
       .map(
         (source) => `[${source.id}] ${source.title}
 URL: ${source.url}
@@ -109,6 +110,32 @@ If the answer needs verified facts, explicitly say that no citable web source is
   }
 
   return "No web evidence is available. Do not fabricate citations.";
+}
+
+function formatKnowledgeLayer(sources = []) {
+  const knowledgeSources = sources.filter((source) => source.type === "knowledge");
+  if (!knowledgeSources.length) {
+    return "No uploaded knowledge document matched this request. Do not invent document citations.";
+  }
+
+  const blocks = knowledgeSources
+    .map((source) => {
+      const location = [
+        source.pageNumber ? `Page: ${source.pageNumber}` : "",
+        source.heading ? `Section: ${source.heading}` : ""
+      ]
+        .filter(Boolean)
+        .join("\n");
+      return `[${source.id}] ${source.title}
+${location}
+Excerpt: ${normalizeText(source.snippet, 1800)}`;
+    })
+    .join("\n\n");
+
+  return `Relevant excerpts were retrieved from user-uploaded knowledge documents.
+Use only the source ids below for document citations. Cite claims with [n], and do not present these documents as web pages.
+
+${blocks}`;
 }
 
 // runtime 层：把本次请求的执行计划、搜索意图、agent trace 放进上下文。
@@ -167,6 +194,7 @@ export function buildLayeredContext(messages = [], sources = [], search = {}, op
   const layers = [
     { name: "persona", role: "system", content: personaPrompt },
     { name: "long_term_summary", role: "system", content: buildConversationSummary(cleanMessages) },
+    { name: "knowledge_evidence", role: "system", content: formatKnowledgeLayer(sources) },
     { name: "evidence", role: "system", content: formatEvidenceLayer(sources, enrichedSearch) },
     {
       name: "runtime",

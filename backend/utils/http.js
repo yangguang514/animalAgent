@@ -17,6 +17,17 @@ export async function readJsonBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+export async function readBinaryBody(req, maxBytes = 25 * 1024 * 1024) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > maxBytes) throw new Error("上传文件超过大小限制。");
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 export function sanitizeMessages(messages) {
   if (!Array.isArray(messages)) return [];
 

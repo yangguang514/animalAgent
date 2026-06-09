@@ -95,3 +95,30 @@ export function getServerConfig() {
     storageProvider: (process.env.STORAGE_PROVIDER || defaultStorageProvider).toLowerCase()
   };
 }
+
+export function getEmbeddingConfig() {
+  const key = process.env.EMBEDDING_API_KEY || process.env.OPENAI_API_KEY || "";
+  const provider = (process.env.EMBEDDING_PROVIDER || (key ? "openai" : "local")).toLowerCase();
+  return {
+    provider,
+    key,
+    baseURL: (process.env.EMBEDDING_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
+    model: process.env.EMBEDDING_MODEL || (provider === "local" ? "local-hash-1536" : "text-embedding-3-small"),
+    dimensions: Math.max(128, Number(process.env.EMBEDDING_DIMENSIONS || 1536)),
+    batchSize: Math.max(1, Math.min(Number(process.env.EMBEDDING_BATCH_SIZE || 48), 100)),
+    timeoutMs: Math.max(5000, Number(process.env.EMBEDDING_TIMEOUT_MS || 45000))
+  };
+}
+
+export function getKnowledgeConfig() {
+  const maxFileMb = Math.max(1, Math.min(Number(process.env.KNOWLEDGE_MAX_FILE_MB || 25), 100));
+  return {
+    maxFileMb,
+    maxFileBytes: maxFileMb * 1024 * 1024,
+    chunkMaxChars: Math.max(600, Number(process.env.KNOWLEDGE_CHUNK_MAX_CHARS || 2200)),
+    chunkOverlapChars: Math.max(0, Number(process.env.KNOWLEDGE_CHUNK_OVERLAP_CHARS || 280)),
+    retrievalLimit: Math.max(1, Math.min(Number(process.env.KNOWLEDGE_RETRIEVAL_LIMIT || 8), 20)),
+    minimumScore: Math.max(-1, Math.min(Number(process.env.KNOWLEDGE_MINIMUM_SCORE || 0.12), 1)),
+    retrievalDisabled: /^(1|true|yes|on)$/i.test(process.env.KNOWLEDGE_RETRIEVAL_DISABLED || "")
+  };
+}

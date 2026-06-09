@@ -1,4 +1,5 @@
 import { searchWeb } from "../services/searchService.js";
+import { retrieveKnowledge } from "../services/knowledgeService.js";
 
 // “agent 设计模式”在这里集中登记。
 // 它既用于运行时角色路由，也用于 /api/agents 和 README 的架构展示。
@@ -120,7 +121,36 @@ export async function planAndResearch(messages, events = {}) {
   events.status?.(`Role selector chose ${selectedAgent.name}.`);
   events.status?.("Planner agent is checking whether retrieval is needed...");
 
-  const search = await searchWeb(messages, { signal: events.signal });
+  const latestQuestion = recentUserMessages(messages, 1)[0] || "";
+  events.status?.("正在检索已导入的知识文件...");
+  const [search, knowledgeResult] = await Promise.all([
+    searchWeb(messages, { signal: events.signal }),
+    retrieveKnowledge(latestQuestion)
+      .then((sources) => ({ sources, error: null }))
+      .catch((error) => ({ sources: [], error }))
+  ]);
+  const combinedSources = [...knowledgeResult.sources, ...(search.sources || [])].map((source, index) => ({
+    ...source,
+    id: index + 1
+  }));
+  search.sources = combinedSources;
+  search.knowledge = {
+    matched: knowledgeResult.sources.length,
+    error: knowledgeResult.error
+      ? knowledgeResult.error instanceof Error
+        ? knowledgeResult.error.message
+        : String(knowledgeResult.error)
+      : ""
+  };
+  traceLog.push(
+    trace(
+      "knowledge_retriever",
+      knowledgeResult.error ? "degraded" : knowledgeResult.sources.length ? "sources_ready" : "no_sources",
+      knowledgeResult.error
+        ? search.knowledge.error
+        : `${knowledgeResult.sources.length} document excerpts matched.`
+    )
+  );
   traceLog.push(
     trace(
       "router",

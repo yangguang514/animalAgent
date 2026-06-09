@@ -55,16 +55,20 @@ watch(
           class="sources"
           aria-label="信息来源"
         >
-          <a
-            v-for="source in message.sources"
-            :key="source.url"
-            :href="source.url"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <span>[{{ source.id }}]</span>
-            {{ source.title }}
-          </a>
+          <template v-for="source in message.sources" :key="`${source.id}-${source.url || 'local'}`">
+            <a v-if="source.url" :href="source.url" target="_blank" rel="noreferrer">
+              <span>[{{ source.id }}]</span>
+              {{ source.title }}
+              <small v-if="source.type === 'knowledge' && source.pageNumber">
+                第 {{ source.pageNumber }} 页
+              </small>
+            </a>
+            <span v-else class="source-static">
+              <span>[{{ source.id }}]</span>
+              {{ source.title }}
+              <small v-if="source.pageNumber">第 {{ source.pageNumber }} 页</small>
+            </span>
+          </template>
         </nav>
       </div>
     </article>

@@ -10,7 +10,14 @@ export function buildMessages(messages, sources, search = {}, options = {}) {
 
 // 兜底逻辑：如果模型忘记在末尾列“信息来源”，后端帮它补上。
 function sourceListMarkdown(sources) {
-  return sources.map((source) => `[${source.id}] ${source.title} - ${source.url}`).join("\n");
+  return sources
+    .map((source) => {
+      const location = source.type === "knowledge" && source.pageNumber ? `（第 ${source.pageNumber} 页）` : "";
+      return source.url
+        ? `[${source.id}] ${source.title}${location} - ${source.url}`
+        : `[${source.id}] ${source.title}${location}`;
+    })
+    .join("\n");
 }
 
 function ensureSourceList(answer, sources) {

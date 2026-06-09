@@ -14,6 +14,23 @@ export const chatApi = {
   get: (id) => request(`/api/conversations/${id}`),
   clear: (id) => request(`/api/conversations/${id}/clear`, { method: "POST" }),
   remove: (id) => request(`/api/conversations/${id}`, { method: "DELETE" }),
+  listDocuments: () => request("/api/documents"),
+  processDocument: (payload) =>
+    request("/api/documents/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }),
+  uploadDocumentDirect: (file) =>
+    request("/api/documents/direct", {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        "X-File-Name": encodeURIComponent(file.name)
+      },
+      body: file
+    }),
+  removeDocument: (id) => request(`/api/documents/${id}`, { method: "DELETE" }),
   import: (payload) =>
     request("/api/conversations/import", {
       method: "POST",

@@ -10,16 +10,19 @@
     "start": "node server/index.js",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node backend/agents/animalAgentOrchestrator.test.js && node backend/services/titleService.test.js && node backend/services/llmService.test.js && node src/utils/markdown.test.js",
-    "check": "node --check api/index.js && node --check server/index.js && node --check backend/routes/apiRoutes.js && node --check backend/services/chatService.js && node --check backend/services/llmService.js && node --check backend/agents/animalAgentOrchestrator.js && node --check backend/context/layeredContext.js && node --check backend/repositories/postgresConversationRepository.js && node --check backend/repositories/jsonConversationRepository.js"
+    "test": "node backend/agents/animalAgentOrchestrator.test.js && node backend/services/titleService.test.js && node backend/services/llmService.test.js && node backend/services/knowledgePipeline.test.js && node src/utils/markdown.test.js",
+    "check": "node --check api/index.js && node --check server/index.js && node --check backend/routes/apiRoutes.js && node --check backend/services/chatService.js && node --check backend/services/llmService.js && node --check backend/services/knowledgeService.js && node --check backend/services/documentParser.js && node --check backend/services/documentChunker.js && node --check backend/services/embeddingService.js && node --check backend/agents/animalAgentOrchestrator.js && node --check backend/context/layeredContext.js && node --check backend/repositories/postgresConversationRepository.js && node --check backend/repositories/jsonConversationRepository.js && node --check backend/repositories/postgresKnowledgeRepository.js && node --check backend/repositories/jsonKnowledgeRepository.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
+    "@vercel/blob": "^2.4.0",
     "cors": "^2.8.5",
     "dompurify": "^3.2.4",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "mammoth": "^1.12.0",
     "marked": "^15.0.7",
+    "pdfjs-dist": "^4.10.38",
     "vue": "^3.5.13"
   },
   "devDependencies": {

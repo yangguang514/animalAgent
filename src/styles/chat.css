@@ -362,7 +362,9 @@
   margin-top: 1rem;
 }
 
-.sources a {
+.sources a,
+.sources .source-static {
+  display: block;
   padding: 0.4rem 0.55rem;
   overflow: hidden;
   color: var(--forest);
@@ -371,6 +373,12 @@
   text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sources a small,
+.sources .source-static small {
+  margin-left: 0.35rem;
+  color: var(--muted);
 }
 
 .typing,
@@ -407,6 +415,170 @@
   grid-row: 4;
   border-top: 1px solid var(--line);
   background: rgba(246, 242, 232, 0.96);
+}
+
+.knowledge-dock {
+  padding: 0.7rem clamp(1.25rem, 4vw, 2.5rem) 0;
+}
+
+.knowledge-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.knowledge-toggle,
+.knowledge-upload,
+.document-item button {
+  border: 0;
+  color: var(--forest);
+  background: transparent;
+}
+
+.knowledge-toggle {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.knowledge-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin-right: 0.65rem;
+  border: 1px solid #c6b78f;
+  border-radius: 0.5rem 0.15rem;
+  color: var(--forest-deep);
+  background: #e5d8b8;
+  font-family: Georgia, "Songti SC", serif;
+  font-weight: 700;
+}
+
+.knowledge-toggle strong,
+.knowledge-toggle small {
+  display: block;
+}
+
+.knowledge-toggle strong {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.knowledge-toggle small {
+  margin-top: 0.1rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.knowledge-upload {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  transition: 180ms ease;
+}
+
+.knowledge-upload:hover:not(:disabled) {
+  color: #fff;
+  background: var(--forest);
+  transform: translateY(-1px);
+}
+
+.knowledge-panel {
+  max-height: 10.5rem;
+  margin-top: 0.65rem;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+
+.knowledge-empty,
+.knowledge-error {
+  margin: 0;
+  padding: 0.75rem 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.knowledge-error {
+  color: #7c302b;
+}
+
+.upload-progress {
+  height: 3px;
+  margin-top: 0.6rem;
+  overflow: hidden;
+  background: var(--paper-deep);
+}
+
+.upload-progress span {
+  display: block;
+  height: 100%;
+  background: var(--brass);
+  transition: width 180ms ease;
+}
+
+.document-list {
+  display: grid;
+}
+
+.document-item {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid rgba(212, 205, 191, 0.72);
+}
+
+.document-format {
+  color: var(--brass);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.document-item strong,
+.document-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-item strong {
+  color: var(--ink);
+  font-size: 0.75rem;
+}
+
+.document-item small {
+  margin-top: 0.18rem;
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.document-item .status-ready {
+  color: #4f715c;
+}
+
+.document-item .status-failed {
+  color: #9a4038;
+}
+
+.document-item button {
+  padding: 0.35rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.document-item button:hover:not(:disabled) {
+  color: #9a4038;
 }
 
 .examples {
@@ -547,6 +719,11 @@
   .examples {
     padding-left: 1rem;
     padding-right: 1rem;
+  }
+
+  .knowledge-dock {
+    padding-right: 1rem;
+    padding-left: 1rem;
   }
 
   .composer {
