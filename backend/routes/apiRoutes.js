@@ -60,13 +60,16 @@ export async function handleApi(req, res) {
 
     if (req.method === "POST" && parts[1] === "documents" && parts[2] === "process") {
       const body = await readJsonBody(req);
-      const document = await processUploadedDocument({
-        filename: body.filename,
-        contentType: body.contentType,
-        size: body.size,
-        url: body.url,
-        pathname: body.pathname
-      });
+      const document = await processUploadedDocument(
+        {
+          filename: body.filename,
+          contentType: body.contentType,
+          size: body.size,
+          url: body.url,
+          pathname: body.pathname
+        },
+        req
+      );
       sendJson(res, 201, { document });
       return true;
     }

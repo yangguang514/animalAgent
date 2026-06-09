@@ -1,4 +1,4 @@
-import { del, issueSignedToken } from "@vercel/blob";
+import { del, get, issueSignedToken } from "@vercel/blob";
 import { handleUpload, handleUploadPresigned } from "@vercel/blob/client";
 import { getEmbeddingConfig, getKnowledgeConfig } from "../config/env.js";
 import { knowledgeRepository } from "../repositories/knowledgeRepository.js";
@@ -134,14 +134,30 @@ async function processDocumentBuffer(input, buffer) {
   }
 }
 
-export async function processUploadedDocument(input) {
+function blobCredentialOptions(req) {
+  const oidcToken =
+    req?.headers?.["x-vercel-oidc-token"] ||
+    process.env.VERCEL_OIDC_TOKEN;
+  return oidcToken
+    ? { oidcToken, storeId: process.env.BLOB_STORE_ID }
+    : {};
+}
+
+export async function processUploadedDocument(input, req) {
   // 生产环境只接受本项目 Blob 域名，避免后端被用作任意 URL 下载代理。
   if (!/^https:\/\/.+\.blob\.vercel-storage\.com\//i.test(String(input.url || ""))) {
     throw new Error("文件地址不是有效的 Vercel Blob URL。");
   }
-  const response = await fetch(input.url);
-  if (!response.ok) throw new Error(`读取上传文件失败：HTTP ${response.status}`);
-  return processDocumentBuffer(input, await response.arrayBuffer());
+  const result = await get(input.pathname || input.url, {
+    access: "private",
+    useCache: false,
+    ...blobCredentialOptions(req)
+  });
+  if (!result || result.statusCode !== 200 || !result.stream) {
+    throw new Error("读取上传文件失败：Blob 内容不可用。");
+  }
+  const buffer = await new Response(result.stream).arrayBuffer();
+  return processDocumentBuffer(input, buffer);
 }
 
 export async function processDirectDocument(input, buffer) {
@@ -172,11 +188,8 @@ export async function deleteDocument(id, req) {
   const document = documents.find((item) => item.id === id);
   const deleted = await knowledgeRepository.deleteDocument(id);
   if (deleted && document?.url && hasBlobCredentials(req)) {
-    const oidcToken =
-      req?.headers?.["x-vercel-oidc-token"] ||
-      process.env.VERCEL_OIDC_TOKEN;
     await del(document.url, {
-      ...(oidcToken ? { oidcToken, storeId: process.env.BLOB_STORE_ID } : {})
+      ...blobCredentialOptions(req)
     }).catch(() => {});
   }
   return deleted;
