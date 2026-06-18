@@ -66,6 +66,8 @@ function buildTavilyPayload(query, config) {
     topic,
     include_answer: parseIncludeAnswer(),
     include_raw_content: parseRawContent(),
+    include_images: parseBooleanEnv("TAVILY_INCLUDE_IMAGES", true),
+    include_image_descriptions: parseBooleanEnv("TAVILY_INCLUDE_IMAGE_DESCRIPTIONS", true),
     include_favicon: true,
     include_usage: true
   };
@@ -108,11 +110,14 @@ async function searchWithTavily(query, config) {
   );
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error || `Tavily search failed: HTTP ${response.status}`);
-  return Array.isArray(data.results) ? data.results : [];
+  return {
+    results: Array.isArray(data.results) ? data.results : [],
+    images: Array.isArray(data.images) ? data.images : []
+  };
 }
 
 async function searchWithSerper(query, config) {
-  const response = await fetchWithTimeout(
+  const searchResponse = await fetchWithTimeout(
     "https://google.serper.dev/search",
     {
       method: "POST",
@@ -122,21 +127,61 @@ async function searchWithSerper(query, config) {
     },
     config.timeoutMs
   );
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data?.message || `Serper search failed: HTTP ${response.status}`);
-  return Array.isArray(data.organic) ? data.organic : [];
+  const data = await searchResponse.json().catch(() => ({}));
+  if (!searchResponse.ok) throw new Error(data?.message || `Serper search failed: HTTP ${searchResponse.status}`);
+
+  let images = [];
+  try {
+    const imageResponse = await fetchWithTimeout(
+      "https://google.serper.dev/images",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-KEY": config.key },
+        signal: config.signal,
+        body: JSON.stringify({ q: query, num: Math.max(3, Math.min(config.maxImages || 4, 10)) })
+      },
+      config.timeoutMs
+    );
+    const imageData = await imageResponse.json().catch(() => ({}));
+    if (imageResponse.ok && Array.isArray(imageData.images)) images = imageData.images;
+  } catch {
+    images = [];
+  }
+
+  return {
+    results: Array.isArray(data.organic) ? data.organic : [],
+    images
+  };
 }
 
 async function searchWithBrave(query, config) {
   const params = new URLSearchParams({ q: query, count: String(config.maxResults) });
-  const response = await fetchWithTimeout(
+  const searchResponse = await fetchWithTimeout(
     `https://api.search.brave.com/res/v1/web/search?${params}`,
     { headers: { Accept: "application/json", "X-Subscription-Token": config.key }, signal: config.signal },
     config.timeoutMs
   );
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data?.message || `Brave search failed: HTTP ${response.status}`);
-  return Array.isArray(data?.web?.results) ? data.web.results : [];
+  const data = await searchResponse.json().catch(() => ({}));
+  if (!searchResponse.ok) throw new Error(data?.message || `Brave search failed: HTTP ${searchResponse.status}`);
+
+  let images = [];
+  try {
+    const imageParams = new URLSearchParams({ q: query, count: String(Math.max(3, Math.min(config.maxImages || 4, 10))) });
+    const imageResponse = await fetchWithTimeout(
+      `https://api.search.brave.com/res/v1/images/search?${imageParams}`,
+      { headers: { Accept: "application/json", "X-Subscription-Token": config.key }, signal: config.signal },
+      config.timeoutMs
+    );
+    const imageData = await imageResponse.json().catch(() => ({}));
+    if (imageResponse.ok && Array.isArray(imageData?.results)) images = imageData.results;
+  } catch {
+    images = [];
+  }
+
+  return {
+    results: Array.isArray(data?.web?.results) ? data.web.results : [],
+    images
+  };
 }
 
 async function runProviderSearch(query, config) {

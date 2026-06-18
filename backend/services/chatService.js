@@ -113,6 +113,7 @@ export async function askOnce(messages) {
   return {
     answer,
     sources: agentRun.search.sources,
+    images: agentRun.search.images || [],
     search: {
       enabled: agentRun.search.enabled,
       skipped: agentRun.search.skipped,
@@ -135,7 +136,7 @@ export async function appendUserMessageAndStream(conversationId, content, events
   let conversation = await conversationRepository.get(conversationId);
   if (!conversation) conversation = await conversationRepository.create();
 
-  const userMessage = { role: "user", content, sources: [], status: "complete" };
+  const userMessage = { role: "user", content, sources: [], images: [], status: "complete" };
   const title = generateLocalTitle([...conversation.messages, userMessage]);
   let appended;
   try {
@@ -143,7 +144,7 @@ export async function appendUserMessageAndStream(conversationId, content, events
     appended = await conversationRepository.appendTurn(
       conversation.id,
       userMessage,
-      { role: "assistant", content: "", sources: [], status: "streaming" },
+      { role: "assistant", content: "", sources: [], images: [], status: "streaming" },
       title
     );
   } catch (error) {
@@ -170,6 +171,7 @@ export async function appendUserMessageAndStream(conversationId, content, events
     throw error;
   }
   const search = agentRun.search;
+  const images = search.images || [];
   events.sources?.({
     enabled: search.enabled,
     skipped: search.skipped,
@@ -179,6 +181,7 @@ export async function appendUserMessageAndStream(conversationId, content, events
     plan: search.plan,
     sources: search.sources
   });
+  events.images?.({ images });
 
   events.status?.("Writer agent 正在生成回答...");
   let answer = "";
@@ -201,6 +204,7 @@ export async function appendUserMessageAndStream(conversationId, content, events
         conversationRepository.updateMessage(conversation.id, assistantMessageId, {
           content: snapshot,
           sources: search.sources,
+          images,
           status: patch.status || "streaming",
           ...(patch.agents === undefined ? {} : { agents: patch.agents })
         })
@@ -255,6 +259,7 @@ export async function appendUserMessageAndStream(conversationId, content, events
       .updateMessage(conversation.id, assistantMessageId, {
         content: answer,
         sources: search.sources,
+        images,
         status: events.signal?.aborted ? "interrupted" : "failed"
       })
       .catch(() => {});
@@ -272,6 +277,7 @@ export async function appendUserMessageAndStream(conversationId, content, events
   conversation = await conversationRepository.updateMessage(conversation.id, assistantMessageId, {
     content: answer,
     sources: search.sources,
+    images,
     agents: finalRun,
     status: "complete"
   });

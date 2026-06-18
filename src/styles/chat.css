@@ -356,6 +356,62 @@
   font-size: 0.88em;
 }
 
+.markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.message-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.message-images figure {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid rgba(45, 70, 52, 0.14);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.message-images a {
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: rgba(45, 70, 52, 0.08);
+}
+
+.message-images img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.message-images figcaption {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem 0.65rem;
+  color: var(--forest);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.message-images figcaption span,
+.message-images figcaption small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-images figcaption small {
+  color: var(--muted);
+}
+
 .sources {
   display: grid;
   gap: 0.35rem;

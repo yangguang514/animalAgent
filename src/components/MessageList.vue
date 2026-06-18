@@ -11,7 +11,11 @@ const props = defineProps({
 const container = ref(null);
 
 watch(
-  () => [props.messages.length, props.messages.map((message) => message.content).join("")],
+  () => [
+    props.messages.length,
+    props.messages.map((message) => message.content).join(""),
+    props.messages.map((message) => message.images?.length || 0).join(",")
+  ],
   async () => {
     await nextTick();
     if (container.value) container.value.scrollTop = container.value.scrollHeight;
@@ -50,6 +54,28 @@ watch(
         <span v-else-if="index === streamingIndex" class="typing" aria-label="正在生成回答">
           <i /><i /><i />
         </span>
+        <div
+          v-if="message.role === 'assistant' && message.images?.length"
+          class="message-images"
+          aria-label="相关图片"
+        >
+          <figure v-for="image in message.images" :key="image.id || image.url">
+            <a :href="image.sourceUrl || image.url" target="_blank" rel="noreferrer">
+              <img
+                :src="image.thumbnailUrl || image.url"
+                :alt="image.alt || image.caption || '相关图片'"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              />
+            </a>
+            <figcaption>
+              <span>{{ image.caption || image.alt || "相关图片" }}</span>
+              <small v-if="image.sourceTitle || image.sourceId">
+                {{ image.sourceId ? `[${image.sourceId}] ` : "" }}{{ image.sourceTitle }}
+              </small>
+            </figcaption>
+          </figure>
+        </div>
         <nav
           v-if="message.role === 'assistant' && message.sources?.length && index !== streamingIndex"
           class="sources"

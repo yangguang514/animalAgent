@@ -77,6 +77,7 @@ export function getSearchConfig() {
     provider,
     key: rawKey && !/^your_.+_key_here$/i.test(rawKey.trim()) ? rawKey.trim() : "",
     maxResults: Math.max(1, Math.min(Number(process.env.SEARCH_MAX_RESULTS || 5), 8)),
+    maxImages: Math.max(0, Math.min(Number(process.env.SEARCH_MAX_IMAGES || 4), 8)),
     timeoutMs: Math.max(3000, Number(process.env.SEARCH_TIMEOUT_MS || 10000)),
     strictErrors: /^true$/i.test(process.env.SEARCH_STRICT_ERRORS || "")
   };

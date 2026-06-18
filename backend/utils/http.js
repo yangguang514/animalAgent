@@ -36,7 +36,8 @@ export function sanitizeMessages(messages) {
     .map((message) => ({
       role: message.role,
       content: String(message.content || "").trim().slice(0, 6000),
-      sources: Array.isArray(message.sources) ? message.sources : []
+      sources: Array.isArray(message.sources) ? message.sources : [],
+      images: Array.isArray(message.images) ? message.images : []
     }))
     .filter((message) => message.content)
     .slice(-16);

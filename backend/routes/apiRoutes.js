@@ -150,6 +150,7 @@ export async function handleApi(req, res) {
         const conversation = await appendUserMessageAndStream(parts[2], content, {
           status: (message) => sendSse(res, "status", { message }),
           sources: (payload) => sendSse(res, "sources", payload),
+          images: (payload) => sendSse(res, "images", payload),
           delta: (delta) => sendSse(res, "delta", { content: delta }),
           // Critic 修订返回完整文本，使用独立事件通知前端覆盖现有草稿。
           replace: (replacement) => sendSse(res, "replace", { content: replacement }),

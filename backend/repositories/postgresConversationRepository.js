@@ -21,6 +21,7 @@ function toMessage(row) {
     role: row.role,
     content: row.content,
     sources: Array.isArray(row.sources) ? row.sources : [],
+    images: Array.isArray(row.images) ? row.images : [],
     agents: row.agents && typeof row.agents === "object" ? row.agents : undefined,
     status: row.status || "complete"
   };
@@ -85,6 +86,10 @@ export class PostgresConversationRepository {
         ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'complete'
       `;
       await sql`
+        ALTER TABLE animal_messages
+        ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb
+      `;
+      await sql`
         CREATE INDEX IF NOT EXISTS animal_messages_conversation_created_idx
         ON animal_messages(conversation_id, position, created_at)
       `;
@@ -136,7 +141,7 @@ export class PostgresConversationRepository {
     if (!row) return null;
 
     const messagesResult = await sql`
-      SELECT id, role, content, sources, agents, status
+      SELECT id, role, content, sources, images, agents, status
       FROM animal_messages
       WHERE conversation_id = ${id}
       ORDER BY position ASC NULLS LAST, created_at ASC
@@ -205,13 +210,14 @@ export class PostgresConversationRepository {
       `,
       txn`
         -- 用户消息与 assistant 草稿在同一事务提交，避免只保存了半个问答回合。
-        INSERT INTO animal_messages (id, conversation_id, role, content, sources, agents, status, position)
+        INSERT INTO animal_messages (id, conversation_id, role, content, sources, images, agents, status, position)
         SELECT
           ${userId},
           ${conversationId},
           ${userMessage.role},
           ${userMessage.content},
           ${JSON.stringify(userMessage.sources || [])}::jsonb,
+          ${JSON.stringify(userMessage.images || [])}::jsonb,
           ${JSON.stringify(userMessage.agents || null)}::jsonb,
           ${userMessage.status || "complete"},
           COALESCE(MAX(position), -1) + 1
@@ -219,13 +225,14 @@ export class PostgresConversationRepository {
         WHERE conversation_id = ${conversationId}
       `,
       txn`
-        INSERT INTO animal_messages (id, conversation_id, role, content, sources, agents, status, position)
+        INSERT INTO animal_messages (id, conversation_id, role, content, sources, images, agents, status, position)
         SELECT
           ${assistantId},
           ${conversationId},
           ${assistantMessage.role},
           ${assistantMessage.content || ""},
           ${JSON.stringify(assistantMessage.sources || [])}::jsonb,
+          ${JSON.stringify(assistantMessage.images || [])}::jsonb,
           ${JSON.stringify(assistantMessage.agents || null)}::jsonb,
           ${assistantMessage.status || "streaming"},
           COALESCE(MAX(position), -1) + 1
@@ -242,6 +249,7 @@ export class PostgresConversationRepository {
     const sql = await this.getSql();
     const content = patch.content === undefined ? null : String(patch.content);
     const sources = patch.sources === undefined ? null : JSON.stringify(patch.sources || []);
+    const images = patch.images === undefined ? null : JSON.stringify(patch.images || []);
     const agents = patch.agents === undefined ? null : JSON.stringify(patch.agents);
     const status = patch.status === undefined ? null : String(patch.status);
 
@@ -251,6 +259,7 @@ export class PostgresConversationRepository {
       SET
         content = COALESCE(${content}, content),
         sources = COALESCE(${sources}::jsonb, sources),
+        images = COALESCE(${images}::jsonb, images),
         agents = CASE WHEN ${agents}::text IS NULL THEN agents ELSE ${agents}::jsonb END,
         status = COALESCE(${status}, status)
       WHERE conversation_id = ${conversationId} AND id = ${messageId}
@@ -284,13 +293,14 @@ export class PostgresConversationRepository {
       txn`DELETE FROM animal_messages WHERE conversation_id = ${conversation.id}`,
       ...messages.map(
         (message, index) => txn`
-        INSERT INTO animal_messages (id, conversation_id, role, content, sources, agents, status, position)
+        INSERT INTO animal_messages (id, conversation_id, role, content, sources, images, agents, status, position)
         VALUES (
           ${message.id || createId()},
           ${conversation.id},
           ${message.role},
           ${message.content},
           ${JSON.stringify(message.sources || [])}::jsonb,
+          ${JSON.stringify(message.images || [])}::jsonb,
           ${JSON.stringify(message.agents || null)}::jsonb,
           ${message.status || "complete"},
           ${index}

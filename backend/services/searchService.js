@@ -89,6 +89,48 @@ function normalizeSource(item, index, maxSnippetLength = 1600) {
   };
 }
 
+function firstString(...values) {
+  return values.find((value) => typeof value === "string" && value.trim())?.trim() || "";
+}
+
+function normalizeImage(item, index, sources = []) {
+  const raw = typeof item === "string" ? { url: item } : item || {};
+  const url = firstString(
+    raw.url,
+    raw.image_url,
+    raw.imageUrl,
+    raw.thumbnail_url,
+    raw.thumbnailUrl,
+    raw.thumbnail?.src,
+    raw.properties?.url
+  );
+  const sourceUrl = firstString(
+    raw.source_url,
+    raw.sourceUrl,
+    raw.page_url,
+    raw.pageUrl,
+    raw.link,
+    raw.hostPageUrl,
+    raw.properties?.source,
+    raw.source
+  );
+  const matchedSource = sourceUrl
+    ? sources.find((source) => source.url === sourceUrl || sourceUrl.startsWith(source.url) || source.url.startsWith(sourceUrl))
+    : null;
+  const title = firstString(raw.title, raw.name, raw.description, raw.alt, raw.caption, matchedSource?.title);
+
+  return {
+    id: `img-${index + 1}`,
+    url,
+    alt: title || `Related animal image ${index + 1}`,
+    caption: title,
+    sourceUrl: sourceUrl || matchedSource?.url || "",
+    sourceTitle: firstString(raw.sourceTitle, raw.source_name, raw.publisher, matchedSource?.title),
+    sourceId: matchedSource?.id || null,
+    thumbnailUrl: firstString(raw.thumbnail_url, raw.thumbnailUrl, raw.thumbnail?.src)
+  };
+}
+
 // planner 有时会返回 ```json 代码块，这里只抽取其中的 JSON 对象。
 function extractJsonObject(text) {
   const raw = String(text || "").trim();
@@ -218,7 +260,8 @@ export async function searchWeb(messages, options = {}) {
       query: "",
       note: `已跳过联网检索：${plan.reason}`,
       plan,
-      sources: []
+      sources: [],
+      images: []
     };
   }
 
@@ -229,7 +272,8 @@ export async function searchWeb(messages, options = {}) {
       query: plan.query,
       note: "搜索计划建议联网检索，但当前未配置 Search API。",
       plan,
-      sources: []
+      sources: [],
+      images: []
     };
   }
 
@@ -240,7 +284,8 @@ export async function searchWeb(messages, options = {}) {
       query: plan.query,
       note: `搜索计划建议使用 ${config.provider}，但缺少对应 Search API Key。`,
       plan,
-      sources: []
+      sources: [],
+      images: []
     };
   }
 
@@ -261,7 +306,8 @@ export async function searchWeb(messages, options = {}) {
       query: plan.query,
       note: `${config.provider} 检索失败：${error instanceof Error ? error.message : String(error)}`,
       plan,
-      sources: []
+      sources: [],
+      images: []
     };
   }
 
@@ -271,6 +317,12 @@ export async function searchWeb(messages, options = {}) {
     .filter((source) => source.url && !seen.has(source.url) && seen.add(source.url))
     .slice(0, config.maxResults);
 
+  const seenImages = new Set();
+  const images = (toolCall.result?.images || [])
+    .map((item, index) => normalizeImage(item, index, sources))
+    .filter((image) => image.url && !seenImages.has(image.url) && seenImages.add(image.url))
+    .slice(0, config.maxImages);
+
   return {
     enabled: true,
     skipped: false,
@@ -278,6 +330,7 @@ export async function searchWeb(messages, options = {}) {
     note: plan.reason,
     tool: { name: toolCall.tool, provider: toolCall.result?.provider, elapsedMs: toolCall.elapsedMs },
     plan,
-    sources
+    sources,
+    images
   };
 }

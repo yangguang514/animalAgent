@@ -37,7 +37,8 @@ export function welcomeMessage() {
     role: "assistant",
     content:
       "**核心名片模式已就绪**\n\n我支持联网检索、信源标注、流式输出和后端会话保存。\n\n> 试试：“帮我介绍一下雪豹，顺便说下它和花豹有什么区别。”",
-    sources: []
+    sources: [],
+    images: []
   };
 }
 

@@ -138,6 +138,20 @@ export async function planAndResearch(messages, events = {}) {
     id: index + 1
   }));
   search.sources = combinedSources;
+  search.images = (search.images || []).map((image) => {
+    const matchedSource = image.sourceUrl
+      ? combinedSources.find(
+          (source) =>
+            source.url &&
+            (source.url === image.sourceUrl ||
+              image.sourceUrl.startsWith(source.url) ||
+              source.url.startsWith(image.sourceUrl))
+        )
+      : null;
+    return matchedSource
+      ? { ...image, sourceId: matchedSource.id, sourceTitle: image.sourceTitle || matchedSource.title }
+      : image;
+  });
   search.knowledge = {
     matched: knowledgeResult.sources.length,
     error: knowledgeResult.error

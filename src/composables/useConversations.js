@@ -58,15 +58,16 @@ export function useConversations() {
 
     state.error = "";
     state.busy = true;
-    state.activeConversation.messages.push({ role: "user", content: text, sources: [] });
+    state.activeConversation.messages.push({ role: "user", content: text, sources: [], images: [] });
     state.streamingIndex =
-      state.activeConversation.messages.push({ role: "assistant", content: "", sources: [] }) - 1;
+      state.activeConversation.messages.push({ role: "assistant", content: "", sources: [], images: [] }) - 1;
 
     try {
       await streamChat(state.activeId, text, (event, data) => {
         const assistant = state.activeConversation.messages[state.streamingIndex];
         if (!assistant) return;
         if (event === "sources") assistant.sources = data.sources || [];
+        if (event === "images") assistant.images = data.images || [];
         if (event === "delta") assistant.content += data.content || "";
         // Revision Agent 返回完整修订稿，不能像 Writer token 一样追加。
         if (event === "replace") assistant.content = data.content || assistant.content;
