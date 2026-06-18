@@ -311,14 +311,17 @@ export async function searchWeb(messages, options = {}) {
     };
   }
 
+  const rawResults = Array.isArray(toolCall.result?.results) ? toolCall.result.results : [];
+  const rawImages = Array.isArray(toolCall.result?.images) ? toolCall.result.images : [];
+
   const seen = new Set();
-  const sources = (toolCall.result?.results || [])
+  const sources = rawResults
     .map((item, index) => normalizeSource(item, index, Number(process.env.SEARCH_SNIPPET_MAX_LENGTH || 1600)))
     .filter((source) => source.url && !seen.has(source.url) && seen.add(source.url))
     .slice(0, config.maxResults);
 
   const seenImages = new Set();
-  const images = (toolCall.result?.images || [])
+  const images = rawImages
     .map((item, index) => normalizeImage(item, index, sources))
     .filter((image) => image.url && !seenImages.has(image.url) && seenImages.add(image.url))
     .slice(0, config.maxImages);

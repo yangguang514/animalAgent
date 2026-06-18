@@ -207,11 +207,14 @@ export const webSearchTool = {
     if (!query) throw new Error("web_search requires a non-empty query.");
     if (!config) throw new Error("web_search requires searchConfig in context.");
 
-    const results = await runProviderSearch(query, config);
+    const searchResult = await runProviderSearch(query, config);
+    const results = Array.isArray(searchResult) ? searchResult : searchResult?.results;
+    const images = Array.isArray(searchResult?.images) ? searchResult.images : [];
     return {
       provider: config.provider,
       query,
-      results
+      results: Array.isArray(results) ? results : [],
+      images
     };
   }
 };
